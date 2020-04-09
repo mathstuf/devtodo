@@ -1,0 +1,5 @@
+[package]
+name = "devtodo"
+version = "0.1.0"
+authors = ["Ben Boeckel <mathstuf@gmail.com>"]
+edition = "2018"
