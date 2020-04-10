@@ -3,3 +3,11 @@ name = "devtodo"
 version = "0.1.0"
 authors = ["Ben Boeckel <mathstuf@gmail.com>"]
 edition = "2018"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+
+[dependencies.vobject]
+#vobject = "0.8"
+git = "https://github.com/untitaker/rust-vobject.git"
