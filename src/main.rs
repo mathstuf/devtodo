@@ -4,6 +4,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ use human_panic::setup_panic;
 use log::*;
 use thiserror::Error;
 
+mod account;
 mod config;
 mod todo;
 
@@ -53,6 +55,11 @@ enum SetupError {
         #[from]
         source: LogError,
     },
+    #[error("account error for {}", name)]
+    Account {
+        name: String,
+        source: account::AccountError,
+    },
 }
 
 impl SetupError {
@@ -73,6 +80,13 @@ impl SetupError {
     fn merge_keys(path: PathBuf, source: yaml_merge_keys::MergeKeyError) -> Self {
         Self::MergeKeys {
             path,
+            source,
+        }
+    }
+
+    fn account(name: String, source: account::AccountError) -> Self {
+        Self::Account {
+            name,
             source,
         }
     }
@@ -153,6 +167,16 @@ fn try_main() -> Result<(), SetupError> {
         serde_yaml::from_value(doc)
             .map_err(|err| SetupError::parse_config(config_path, err))?
     };
+
+    let accounts = config
+        .accounts
+        .into_iter()
+        .map(|(name, account)| {
+            let item_source = account::connect(account)
+                .map_err(|err| SetupError::account(name.clone(), err))?;
+            Ok((name, item_source))
+        })
+        .collect::<Result<BTreeMap<_, _>, SetupError>>()?;
 
     Ok(())
 }

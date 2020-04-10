@@ -12,7 +12,7 @@ use serde_derive::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
-    accounts: BTreeMap<String, Account>,
+    pub accounts: BTreeMap<String, Account>,
     #[serde(default)]
     targets: BTreeMap<String, SyncTarget>,
     #[serde(default)]
@@ -21,7 +21,7 @@ pub struct Config {
 
 #[derive(Debug, Deserialize)]
 pub struct Account {
-    service: String,
+    pub service: String,
     #[serde(default)]
     hostname: Option<String>,
     secret: String,
