@@ -7,11 +7,13 @@
 use std::fmt;
 use std::fs;
 use std::io;
+use std::iter;
 use std::ops;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use derive_builder::Builder;
+use itertools::Itertools;
 use thiserror::Error;
 use uuid::Uuid;
 use vobject::{Component, Property};
@@ -56,6 +58,12 @@ pub struct TodoFile {
 static PRODID_PREFIX: &str = concat!("-//IDN benboeckel.net//", env!("CARGO_PKG_NAME"), "/",);
 static PRODID_SUFFIX: &str = concat!(env!("CARGO_PKG_VERSION"), " vobject", "//EN",);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Updated {
+    Yes,
+    No,
+}
+
 impl TodoFile {
     pub fn from_item<P>(dir: P, item: TodoItem) -> TodoResult<Self>
     where
@@ -80,6 +88,28 @@ impl TodoFile {
             component,
             item,
         })
+    }
+
+    pub fn write(&mut self) -> TodoResult<()> {
+        if self.sync() == Updated::Yes {
+            fs::write(&self.path, vobject::write_component(&self.component).as_bytes())
+                .map_err(|err| TodoError::write_file(self.path.clone(), err))?;
+        }
+
+        Ok(())
+    }
+
+    fn sync(&mut self) -> Updated {
+        if self.item.updated {
+            let vtodo = Self::extract_component_as_mut(&mut self.component)
+                .expect("How did the component become invalid?");
+            self.item.update_component(vtodo);
+            self.item.updated = false;
+
+            Updated::Yes
+        } else {
+            Updated::No
+        }
     }
 
     pub fn from_path<P>(path: P) -> TodoResult<Option<Self>>
@@ -109,7 +139,7 @@ impl TodoFile {
         )
     }
 
-    fn extract_component(component: &Component) -> Option<Component> {
+    fn is_our_component(component: &Component) -> Option<()> {
         let prodid = component.get_only("PRODID")?;
         if !prodid.value_as_string().starts_with(PRODID_PREFIX) {
             return None;
@@ -117,12 +147,32 @@ impl TodoFile {
         if component.subcomponents.len() != 1 {
             return None;
         }
+
+        Some(())
+    }
+
+    fn extract_component_as_mut(component: &mut Component) -> Option<&mut Component> {
+        Self::is_our_component(component)?;
+        let subcomponent = &mut component.subcomponents[0];
+        if subcomponent.name != "VTODO" {
+            return None;
+        }
+
+        Some(subcomponent)
+    }
+
+    fn extract_component_as_ref(component: &Component) -> Option<&Component> {
+        Self::is_our_component(component)?;
         let subcomponent = &component.subcomponents[0];
         if subcomponent.name != "VTODO" {
             return None;
         }
 
-        Some(subcomponent.clone())
+        Some(subcomponent)
+    }
+
+    fn extract_component(component: &Component) -> Option<Component> {
+        Self::extract_component_as_ref(component).cloned()
     }
 }
 
@@ -249,8 +299,13 @@ pub struct TodoItem {
     #[builder(default)]
     description: String,
 
-    #[builder(default)]
-    last_modified: Option<DateTime<Utc>>,
+    #[builder(default = "Utc::now()")]
+    #[builder(setter(skip))]
+    last_modified: DateTime<Utc>,
+
+    #[builder(default = "false")]
+    #[builder(setter(skip))]
+    updated: bool,
 }
 
 impl TodoItem {
@@ -285,14 +340,15 @@ impl TodoItem {
         let url = component.get_only("URL")?.value_as_string();
         let summary = component.get_only("SUMMARY")?.value_as_string();
         let description = component.get_only("DESCRIPTION")?.value_as_string();
-        let last_modified = if let Some(last_modified) = component.get_only("LAST-MODIFIED") {
-            Some(
-                DateTime::parse_from_str(&last_modified.value_as_string(), DATE_TIME_FMT)
-                    .ok()?
-                    .with_timezone(&Utc),
-            )
+        let (last_modified, updated) = if let Some(last_modified) = component.get_only("LAST-MODIFIED") {
+            let dt = DateTime::parse_from_str(&last_modified.value_as_string(), DATE_TIME_FMT)
+                .ok()?
+                .with_timezone(&Utc);
+
+            (dt, false)
         } else {
-            None
+            // Missing a time? Set it to now; we'll write it back later.
+            (Utc::now(), true)
         };
 
         Some(TodoItem {
@@ -305,25 +361,58 @@ impl TodoItem {
             summary,
             description,
             last_modified,
+            updated,
         })
     }
 
     fn vtodo(&self) -> Component {
         let mut component = Component::new("VTODO");
+
+        // Initialize the component.
         component.set(Property::new("DTSTAMP", format!("{}", Utc::now().format(DATE_TIME_FMT))));
         component.set(Property::new("UID", format!("{}", self.uid.0)));
         component.set(Property::new("CREATED", format!("{}", self.created.format(DATE_TIME_FMT))));
-        component.set(Property::new("LAST-MODIFIED", format!("{}", self.last_modified.as_ref().unwrap_or(&self.created).format(DATE_TIME_FMT))));
-        component.set(Property::new("SUMMARY", &self.summary));
-        component.set(Property::new("DESCRIPTION", &self.description));
         component.set(Property::new("CLASS", "CONFIDENTIAL"));
         component.set(Property::new("STATUS", self.status));
+
+        // Fill in the rest of the fields that we assume are controlled by the source of the item.
+        self.update_component(&mut component);
+
+        component
+    }
+
+    fn update_component(&self, component: &mut Component) {
+        component.set(Property::new("SUMMARY", &self.summary));
+        component.set(Property::new("DESCRIPTION", &self.description));
+        component.set(Property::new("URL", &self.url));
         if let Some(due) = self.due {
             component.set(Property::new("DUE", format!("{}", due)));
         }
-        component.set(Property::new("URL", &self.url));
-        component.set(Property::new("CATEGORIES", self.kind));
 
-        component
+        component.set(Property::new("LAST-MODIFIED", format!("{}", self.last_modified.format(DATE_TIME_FMT))));
+
+        if let Some(prop) = component.get_only("CATEGORIES") {
+            let value = prop.value_as_string();
+            let categories = value.split(',');
+            let all_categories = categories.clone();
+
+            // See if we have any of the categories set.
+            let kind_categories = categories
+                .filter(|&category| ALL_TODO_KINDS.iter().any(|kind| category == kind.category()))
+                .collect::<Vec<_>>();
+
+            // Check if we have the right category already set.
+            if kind_categories.len() == 1 && kind_categories[0] == self.kind.category() {
+                // OK
+            } else {
+                let new_categories = all_categories
+                    .filter(|&category| ALL_TODO_KINDS.iter().all(|kind| category != kind.category()))
+                    .chain(iter::once(self.kind.category()))
+                    .format(",");
+                component.set(Property::new("CATEGORIES", format!("{}", new_categories)));
+            }
+        } else {
+            component.set(Property::new("CATEGORIES", self.kind));
+        };
     }
 }
