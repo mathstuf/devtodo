@@ -309,6 +309,50 @@ pub struct TodoItem {
 }
 
 impl TodoItem {
+    pub fn set_due(&mut self, new_due: Due) {
+        if self.due.as_ref().map(|&due| due != new_due).unwrap_or(true) {
+            self.due = Some(new_due);
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
+    pub fn set_status(&mut self, new_status: TodoStatus) {
+        if self.status != new_status {
+            self.status = new_status;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
+    pub fn set_summary<S>(&mut self, new_summary: S)
+    where
+        S: Into<String>,
+    {
+        let new_summary = new_summary.into();
+        if self.summary != new_summary {
+            self.summary = new_summary;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
+    pub fn set_description<D>(&mut self, new_description: D)
+    where
+        D: Into<String>,
+    {
+        let new_description = new_description.into();
+        if self.description != new_description {
+            self.description = new_description;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     fn from_component(component: Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
         let kind = {
