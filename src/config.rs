@@ -30,12 +30,12 @@ pub struct Account {
 #[derive(Debug, Deserialize)]
 pub struct SyncTarget {
     pub directory: PathBuf,
-    profiles: BTreeMap<String, Profile>,
+    pub profiles: BTreeMap<String, Profile>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Profile {
-    account: String,
+    pub account: String,
     target: QueryTarget,
     #[serde(default)]
     filters: Vec<Filter>,

@@ -77,6 +77,10 @@ enum SetupError {
         path: PathBuf,
         source: todo::TodoError,
     },
+    #[error("no such account {}", name)]
+    NoSuchAccount {
+        name: String,
+    },
 }
 
 impl SetupError {
@@ -129,12 +133,18 @@ impl SetupError {
             source,
         }
     }
+
+    fn no_such_account(name: String) -> Self {
+        Self::NoSuchAccount {
+            name,
+        }
+    }
 }
 
-fn read_directory(path: PathBuf, name: String) -> Result<Vec<TodoFile>, SetupError> {
+fn read_directory(dirpath: &Path, name: String) -> Result<Vec<TodoFile>, SetupError> {
     let mut todo_files = Vec::new();
-    let dir_iter = fs::read_dir(&path)
-        .map_err(|err| SetupError::read_dir(path, name.clone(), err))?;
+    let dir_iter = fs::read_dir(dirpath)
+        .map_err(|err| SetupError::read_dir(dirpath.into(), name.clone(), err))?;
     for entry in dir_iter {
         let entry = entry
             .map_err(|err| SetupError::read_entry(name.clone(), err))?;
@@ -308,11 +318,16 @@ fn try_main() -> Result<(), SetupError> {
         .collect::<BTreeMap<_, _>>();
 
     for (name, target) in targets_to_use {
-        let mut todo_files = read_directory(target.directory, name)?;
+        let mut todo_files = read_directory(&target.directory, name)?;
         let url_map = todo_files
             .iter_mut()
             .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
             .collect::<BTreeMap<String, _>>();
+
+        for (name, profile) in target.profiles {
+            let item_source = accounts.get(&profile.account)
+                .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
+        }
     }
 
     Ok(())
