@@ -106,6 +106,15 @@ fn try_main() -> Result<(), SetupError> {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("TARGET")
+                .short("t")
+                .long("target")
+                .help("Name of a target to sync")
+                .multiple(true)
+                .takes_value(true)
+                .number_of_values(1),
+        )
+        .arg(
             Arg::with_name("DEBUG")
                 .short("d")
                 .long("debug")
@@ -177,6 +186,10 @@ fn try_main() -> Result<(), SetupError> {
             Ok((name, item_source))
         })
         .collect::<Result<BTreeMap<_, _>, SetupError>>()?;
+
+    let targets = matches.values_of("TARGET")
+        .map(|values| values.map(Into::into).collect())
+        .unwrap_or(config.default_targets);
 
     Ok(())
 }

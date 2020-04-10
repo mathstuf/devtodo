@@ -16,7 +16,7 @@ pub struct Config {
     #[serde(default)]
     targets: BTreeMap<String, SyncTarget>,
     #[serde(default)]
-    default_targets: Vec<String>,
+    pub default_targets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
