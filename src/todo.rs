@@ -6,10 +6,13 @@
 
 use std::fs;
 use std::io;
+use std::ops;
 use std::path::PathBuf;
 
 use chrono::{DateTime, NaiveDate, Utc};
+use derive_builder::Builder;
 use thiserror::Error;
+use uuid::Uuid;
 use vobject::Component;
 
 #[derive(Debug, Error)]
@@ -88,6 +91,7 @@ impl TodoFile {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
     NeedsAction,
     Completed,
@@ -127,6 +131,7 @@ impl TodoKind {
 pub const DATE_TIME_FMT: &str = "%Y%m%dT%H%M%SZ";
 pub const DATE_FMT: &str = "%Y%m%d";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Due {
     Date(NaiveDate),
     DateTime(DateTime<Utc>),
@@ -141,22 +146,53 @@ impl Due {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Uid(String);
+
+impl ops::Deref for Uid {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ops::DerefMut for Uid {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Default for Uid {
+    fn default() -> Self {
+        let uuid = Uuid::new_v4();
+
+        Self(format!("{}", uuid.to_hyphenated()))
+    }
+}
+
+#[derive(Builder)]
 pub struct TodoItem {
-    uid: String,
+    #[builder(default)]
+    #[builder(setter(skip))]
+    uid: Uid,
     kind: TodoKind,
     created: DateTime<Utc>,
+    #[builder(default)]
+    #[builder(setter(strip_option))]
     due: Option<Due>,
     status: TodoStatus,
     url: String,
     summary: String,
     description: String,
 
+    #[builder(default)]
     last_modified: Option<DateTime<Utc>>,
 }
 
 impl TodoItem {
     fn from_component(component: Component) -> Option<Self> {
-        let uid = component.get_only("UID")?.value_as_string();
+        let uid = Uid(component.get_only("UID")?.value_as_string());
         let kind = {
             let categories_value = component.get_only("CATEGORIES")?.value_as_string();
             let categories = categories_value.split(',').collect::<Vec<_>>();
