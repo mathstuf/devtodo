@@ -14,7 +14,7 @@ pub struct Config {
     #[serde(default)]
     pub accounts: BTreeMap<String, Account>,
     #[serde(default)]
-    targets: BTreeMap<String, SyncTarget>,
+    pub targets: BTreeMap<String, SyncTarget>,
     #[serde(default)]
     pub default_targets: Vec<String>,
 }
