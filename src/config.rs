@@ -11,14 +11,18 @@ use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    #[serde(default)]
     accounts: BTreeMap<String, Account>,
+    #[serde(default)]
     targets: BTreeMap<String, SyncTarget>,
+    #[serde(default)]
     default_targets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Account {
     service: String,
+    #[serde(default)]
     hostname: Option<String>,
     secret: String,
 }
@@ -33,16 +37,20 @@ pub struct SyncTarget {
 pub struct Profile {
     account: String,
     target: QueryTarget,
+    #[serde(default)]
     filters: Vec<Filter>,
 }
 
 #[derive(Debug, Deserialize)]
 pub enum QueryTarget {
-    User,
+    #[serde(rename = "self")]
+    SelfUser,
+    #[serde(rename = "projects")]
     Projects(Vec<String>),
 }
 
 #[derive(Debug, Deserialize)]
 pub enum Filter {
+    #[serde(rename = "label")]
     Label(String),
 }
