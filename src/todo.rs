@@ -52,7 +52,7 @@ type TodoResult<T> = Result<T, TodoError>;
 pub struct TodoFile {
     path: PathBuf,
     component: Component,
-    item: TodoItem,
+    pub item: TodoItem,
 }
 
 static PRODID_PREFIX: &str = concat!("-//IDN benboeckel.net//", env!("CARGO_PKG_NAME"), "/",);

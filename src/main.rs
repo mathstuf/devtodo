@@ -20,6 +20,7 @@ mod config;
 mod todo;
 
 use self::config::Config;
+use self::todo::TodoFile;
 
 #[derive(Debug, Error)]
 enum LogError {
@@ -60,6 +61,22 @@ enum SetupError {
         name: String,
         source: account::AccountError,
     },
+    #[error("failed to read directory {} for {}", path.display(), name)]
+    ReadDir {
+        path: PathBuf,
+        name: String,
+        source: io::Error,
+    },
+    #[error("failed to read file for {}", name)]
+    ReadEntry {
+        name: String,
+        source: io::Error,
+    },
+    #[error("failed to read todo information from {}", path.display())]
+    TodoFile {
+        path: PathBuf,
+        source: todo::TodoError,
+    },
 }
 
 impl SetupError {
@@ -90,6 +107,89 @@ impl SetupError {
             source,
         }
     }
+
+    fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
+        Self::ReadDir {
+            path,
+            name,
+            source,
+        }
+    }
+
+    fn read_entry(name: String, source: io::Error) -> Self {
+        Self::ReadEntry {
+            name,
+            source,
+        }
+    }
+
+    fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
+        Self::TodoFile {
+            path,
+            source,
+        }
+    }
+}
+
+fn read_directory(path: PathBuf, name: String) -> Result<Vec<TodoFile>, SetupError> {
+    let mut todo_files = Vec::new();
+    let dir_iter = fs::read_dir(&path)
+        .map_err(|err| SetupError::read_dir(path, name.clone(), err))?;
+    for entry in dir_iter {
+        let entry = entry
+            .map_err(|err| SetupError::read_entry(name.clone(), err))?;
+        let path = entry.path();
+
+        // Only look at `.ics` files.
+        if path.extension().map(|ext| ext != "ics").unwrap_or(true) {
+            continue;
+        }
+
+        // Check the filetype.
+        match entry.metadata() {
+            Ok(md) => {
+                let filetype = md.file_type();
+                if filetype.is_dir() {
+                    // Ignore directories.
+                    continue;
+                }
+                // Get the actual file we're dealing with here.
+                let real_filetype = if filetype.is_symlink() {
+                    match path.metadata() {
+                        Ok(real_md) => real_md.file_type(),
+                        Err(err) => {
+                            warn!(
+                                "failed to read target metadata for {}: {}; ignoring",
+                                path.display(),
+                                err,
+                            );
+                            continue;
+                        },
+                    }
+                } else {
+                    filetype
+                };
+                // Ignore non-files.
+                if !real_filetype.is_file() {
+                    continue;
+                }
+            },
+            Err(err) => {
+                warn!(
+                    "failed to read metadata for {}: {}; ignoring",
+                    path.display(),
+                    err,
+                );
+                continue;
+            },
+        }
+
+        if let Some(todo_file) = TodoFile::from_path(&path).map_err(|err| SetupError::todo_file(path, err))? {
+            todo_files.push(todo_file);
+        }
+    }
+
+    Ok(todo_files)
 }
 
 fn try_main() -> Result<(), SetupError> {
@@ -201,6 +301,19 @@ fn try_main() -> Result<(), SetupError> {
             .map(|values| values.map(Into::into).collect())
             .unwrap_or(config.default_targets)
     };
+
+    let targets_to_use = config.targets
+        .into_iter()
+        .filter(|(name, _)| targets.iter().any(|target| target == name))
+        .collect::<BTreeMap<_, _>>();
+
+    for (name, target) in targets_to_use {
+        let mut todo_files = read_directory(target.directory, name)?;
+        let url_map = todo_files
+            .iter_mut()
+            .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
+            .collect::<BTreeMap<String, _>>();
+    }
 
     Ok(())
 }

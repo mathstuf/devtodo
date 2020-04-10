@@ -29,7 +29,7 @@ pub struct Account {
 
 #[derive(Debug, Deserialize)]
 pub struct SyncTarget {
-    directory: PathBuf,
+    pub directory: PathBuf,
     profiles: BTreeMap<String, Profile>,
 }
 
