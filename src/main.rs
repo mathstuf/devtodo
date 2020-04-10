@@ -4,8 +4,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use human_panic::setup_panic;
+
 mod config;
 mod todo;
 
 fn main() {
+    setup_panic!();
 }
