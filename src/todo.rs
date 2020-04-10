@@ -4,21 +4,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::fmt;
 use std::fs;
 use std::io;
 use std::ops;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use derive_builder::Builder;
 use thiserror::Error;
 use uuid::Uuid;
-use vobject::Component;
+use vobject::{Component, Property};
 
 #[derive(Debug, Error)]
 pub enum TodoError {
     #[error("failed to read file {}", path.display())]
     ReadFile { path: PathBuf, source: io::Error },
+    #[error("failed to write file {}", path.display())]
+    WriteFile { path: PathBuf, source: io::Error },
     #[error("failed to parse vobject component")]
     ParseComponent {
         #[from]
@@ -29,6 +32,13 @@ pub enum TodoError {
 impl TodoError {
     fn read_file(path: PathBuf, source: io::Error) -> Self {
         Self::ReadFile {
+            path,
+            source,
+        }
+    }
+
+    fn write_file(path: PathBuf, source: io::Error) -> Self {
+        Self::WriteFile {
             path,
             source,
         }
@@ -47,6 +57,31 @@ static PRODID_PREFIX: &str = concat!("-//IDN benboeckel.net//", env!("CARGO_PKG_
 static PRODID_SUFFIX: &str = concat!(env!("CARGO_PKG_VERSION"), " vobject", "//EN",);
 
 impl TodoFile {
+    pub fn from_item<P>(dir: P, item: TodoItem) -> TodoResult<Self>
+    where
+        P: AsRef<Path>,
+    {
+        Self::from_item_impl(dir.as_ref(), item)
+    }
+
+    fn from_item_impl(dir: &Path, item: TodoItem) -> TodoResult<Self> {
+        let path = dir.join(format!("{}.ical", item.uid.0));
+        let subcomponent = item.vtodo();
+        let mut component = Component::new("VCALENDAR");
+        component.set(Property::new("VERSION", "2.0"));
+        component.set(Property::new("PRODID", format!("{}{}", PRODID_PREFIX, PRODID_SUFFIX)));
+        component.subcomponents.push(subcomponent);
+
+        fs::write(&path, vobject::write_component(&component).as_bytes())
+            .map_err(|err| TodoError::write_file(path.clone(), err))?;
+
+        Ok(Self {
+            path,
+            component,
+            item,
+        })
+    }
+
     pub fn from_path<P>(path: P) -> TodoResult<Option<Self>>
     where
         P: Into<PathBuf>,
@@ -99,6 +134,17 @@ pub enum TodoStatus {
     Cancelled,
 }
 
+impl AsRef<str> for TodoStatus {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::NeedsAction => "NEEDS-ACTION",
+            Self::Completed => "COMPLETED",
+            Self::InProgress => "IN-PROGRESS",
+            Self::Cancelled => "CANCELLED",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoKind {
     Issue,
@@ -128,6 +174,12 @@ impl TodoKind {
     }
 }
 
+impl AsRef<str> for TodoKind {
+    fn as_ref(&self) -> &str {
+        self.category()
+    }
+}
+
 pub const DATE_TIME_FMT: &str = "%Y%m%dT%H%M%SZ";
 pub const DATE_FMT: &str = "%Y%m%d";
 
@@ -143,6 +195,15 @@ impl Due {
             Ok(dt) => Due::DateTime(dt.with_timezone(&Utc)),
             Err(_) => NaiveDate::parse_from_str(s, DATE_FMT).map(Due::Date).ok()?,
         })
+    }
+}
+
+impl fmt::Display for Due {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Due::Date(d) => write!(f, "{}", d.format(DATE_FMT)),
+            Due::DateTime(dt) => write!(f, "{}", dt.format(DATE_TIME_FMT)),
+        }
     }
 }
 
@@ -177,6 +238,7 @@ pub struct TodoItem {
     #[builder(setter(skip))]
     uid: Uid,
     kind: TodoKind,
+    #[builder(default = "Utc::now()")]
     created: DateTime<Utc>,
     #[builder(default)]
     #[builder(setter(strip_option))]
@@ -184,6 +246,7 @@ pub struct TodoItem {
     status: TodoStatus,
     url: String,
     summary: String,
+    #[builder(default)]
     description: String,
 
     #[builder(default)]
@@ -243,5 +306,24 @@ impl TodoItem {
             description,
             last_modified,
         })
+    }
+
+    fn vtodo(&self) -> Component {
+        let mut component = Component::new("VTODO");
+        component.set(Property::new("DTSTAMP", format!("{}", Utc::now().format(DATE_TIME_FMT))));
+        component.set(Property::new("UID", format!("{}", self.uid.0)));
+        component.set(Property::new("CREATED", format!("{}", self.created.format(DATE_TIME_FMT))));
+        component.set(Property::new("LAST-MODIFIED", format!("{}", self.last_modified.as_ref().unwrap_or(&self.created).format(DATE_TIME_FMT))));
+        component.set(Property::new("SUMMARY", &self.summary));
+        component.set(Property::new("DESCRIPTION", &self.description));
+        component.set(Property::new("CLASS", "CONFIDENTIAL"));
+        component.set(Property::new("STATUS", self.status));
+        if let Some(due) = self.due {
+            component.set(Property::new("DUE", format!("{}", due)));
+        }
+        component.set(Property::new("URL", &self.url));
+        component.set(Property::new("CATEGORIES", self.kind));
+
+        component
     }
 }
