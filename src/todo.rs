@@ -73,7 +73,7 @@ impl TodoFile {
     }
 
     fn from_item_impl(dir: &Path, item: TodoItem) -> TodoResult<Self> {
-        let path = dir.join(format!("{}.ical", item.uid.0));
+        let path = dir.join(format!("{}.ics", item.uid.0));
         let subcomponent = item.vtodo();
         let mut component = Component::new("VCALENDAR");
         component.set(Property::new("VERSION", "2.0"));
