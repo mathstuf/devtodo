@@ -264,9 +264,7 @@ fn try_main() -> Result<(), SetupError> {
                 .short("l")
                 .long("logger")
                 .default_value("env")
-                .possible_values(&[
-                    "env",
-                ])
+                .possible_values(&["env"])
                 .help("Logging backend")
                 .value_name("LOGGER")
                 .takes_value(true),
