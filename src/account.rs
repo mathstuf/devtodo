@@ -41,6 +41,7 @@ pub trait ItemSource {
 
 #[derive(Debug, Error)]
 pub enum AccountError {
+    #[cfg(not(any(feature = "github")))]
     #[error("unsupported service: {}", service)]
     UnsupportedService { service: &'static str },
     #[error("unknown service: {}", service)]
