@@ -180,7 +180,7 @@ impl TodoFile {
 pub enum TodoStatus {
     NeedsAction,
     Completed,
-    InProgress,
+    InProcess,
     Cancelled,
 }
 
@@ -189,7 +189,7 @@ impl AsRef<str> for TodoStatus {
         match self {
             Self::NeedsAction => "NEEDS-ACTION",
             Self::Completed => "COMPLETED",
-            Self::InProgress => "IN-PROGRESS",
+            Self::InProcess => "IN-PROCESS",
             Self::Cancelled => "CANCELLED",
         }
     }
@@ -381,7 +381,7 @@ impl TodoItem {
         let status = match component.get_only("STATUS")?.value_as_string().as_ref() {
             "NEEDS-ACTION" => TodoStatus::NeedsAction,
             "COMPLETED" => TodoStatus::Completed,
-            "IN-PROGRESS" => TodoStatus::InProgress,
+            "IN-PROCESS" => TodoStatus::InProcess,
             "CANCELLED" => TodoStatus::Cancelled,
             _ => return None,
         };

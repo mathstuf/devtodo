@@ -67,7 +67,7 @@ macro_rules! impl_issue {
                         if issue.assignees.assignees.map(|v| v.is_empty()).unwrap_or(true) {
                             TodoStatus::NeedsAction
                         } else {
-                            TodoStatus::InProgress
+                            TodoStatus::InProcess
                         }
                     },
                     state => {
@@ -107,7 +107,7 @@ macro_rules! impl_pull_request {
                         if pr.assignees.assignees.map(|v| v.is_empty()).unwrap_or(true) {
                             TodoStatus::NeedsAction
                         } else {
-                            TodoStatus::InProgress
+                            TodoStatus::InProcess
                         }
                     },
                     state => {
