@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["github"]
-github = ["graphql_client", "lazy-init", "once_cell", "reqwest", "serde_json", "url"]
+github = ["futures", "graphql_client", "lazy-init", "once_cell", "reqwest", "serde_json", "url"]
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -25,6 +25,7 @@ uuid = { version = "0.8", features = ["v4"] }
 yaml-merge-keys = { version = "0.4", features = ["serde_yaml"] }
 
 # github feature
+futures = { version = "0.3", optional = true }
 graphql_client = { version = "0.9", optional = true }
 lazy-init = { version = "0.3", optional = true }
 once_cell = { version = "1.3", optional = true }

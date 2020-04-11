@@ -23,6 +23,11 @@ pub enum ItemError {
     ServiceError {
         service: &'static str,
     },
+    #[error("query error for {}: {}", service, message)]
+    QueryError {
+        service: &'static str,
+        message: String,
+    },
 }
 
 pub type ItemLookup<'a> = BTreeMap<String, &'a mut TodoItem>;
