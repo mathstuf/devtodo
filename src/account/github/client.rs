@@ -48,9 +48,7 @@ pub enum GithubError {
     #[error("github service error: {}", status)]
     GithubService { status: reqwest::StatusCode },
     #[error("json response deserialize: {}", source)]
-    JsonResponse {
-        source: reqwest::Error,
-    },
+    JsonResponse { source: reqwest::Error },
     #[error("graphql error: [\"{}\"]", message.iter().format("\", \""))]
     GraphQL { message: Vec<graphql_client::Error> },
     #[error("no response from github")]
@@ -114,8 +112,7 @@ impl GithubError {
 pub type GithubResult<T> = Result<T, GithubError>;
 
 // The user agent for all queries.
-pub const USER_AGENT: &str =
-    concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
 
 /// A client for communicating with a Github instance.
 #[derive(Clone)]
@@ -181,10 +178,7 @@ impl Github {
     }
 
     /// Send a GraphQL query.
-    fn send_impl<Q>(
-        &self,
-        query: &QueryBody<Q::Variables>,
-    ) -> GithubResult<Q::ResponseData>
+    fn send_impl<Q>(&self, query: &QueryBody<Q::Variables>) -> GithubResult<Q::ResponseData>
     where
         Q: GraphQLQuery,
         Q::Variables: Debug,
@@ -227,10 +221,7 @@ impl Github {
     }
 
     /// Send a GraphQL query.
-    pub fn send<Q>(
-        &self,
-        query: &QueryBody<Q::Variables>,
-    ) -> GithubResult<Q::ResponseData>
+    pub fn send<Q>(&self, query: &QueryBody<Q::Variables>) -> GithubResult<Q::ResponseData>
     where
         Q: GraphQLQuery,
         Q::Variables: Debug,

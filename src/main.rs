@@ -37,10 +37,7 @@ enum SetupError {
     #[error("failed to determine project directories")]
     NoProjectDir,
     #[error("failed to read configuration file {}", path.display())]
-    ReadConfig {
-        path: PathBuf,
-        source: io::Error,
-    },
+    ReadConfig { path: PathBuf, source: io::Error },
     #[error("failed to parse configuration file {}", path.display())]
     ParseConfig {
         path: PathBuf,
@@ -68,20 +65,19 @@ enum SetupError {
         source: io::Error,
     },
     #[error("failed to read file for {}", name)]
-    ReadEntry {
-        name: String,
-        source: io::Error,
-    },
+    ReadEntry { name: String, source: io::Error },
     #[error("failed to read todo information from {}", path.display())]
     TodoFile {
         path: PathBuf,
         source: todo::TodoError,
     },
     #[error("no such account {}", name)]
-    NoSuchAccount {
-        name: String,
-    },
-    #[error("failed to fetch items from the {} account for the {} profile", account, profile)]
+    NoSuchAccount { name: String },
+    #[error(
+        "failed to fetch items from the {} account for the {} profile",
+        account,
+        profile
+    )]
     FetchItems {
         account: String,
         profile: String,
@@ -170,8 +166,7 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
     let dir_iter = fs::read_dir(dirpath)
         .map_err(|err| SetupError::read_dir(dirpath.into(), name.into(), err))?;
     for entry in dir_iter {
-        let entry = entry
-            .map_err(|err| SetupError::read_entry(name.into(), err))?;
+        let entry = entry.map_err(|err| SetupError::read_entry(name.into(), err))?;
         let path = entry.path();
 
         // Only look at `.ics` files.
@@ -218,7 +213,9 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
             },
         }
 
-        if let Some(todo_file) = TodoFile::from_path(&path).map_err(|err| SetupError::todo_file(path, err))? {
+        if let Some(todo_file) =
+            TodoFile::from_path(&path).map_err(|err| SetupError::todo_file(path, err))?
+        {
             todo_files.push(todo_file);
         }
     }
@@ -314,16 +311,15 @@ fn try_main() -> Result<(), SetupError> {
             .map_err(|err| SetupError::parse_config(config_path.clone(), err))?;
         let doc = yaml_merge_keys::merge_keys_serde(doc)
             .map_err(|err| SetupError::merge_keys(config_path.clone(), err))?;
-        serde_yaml::from_value(doc)
-            .map_err(|err| SetupError::parse_config(config_path, err))?
+        serde_yaml::from_value(doc).map_err(|err| SetupError::parse_config(config_path, err))?
     };
 
     let accounts = config
         .accounts
         .into_iter()
         .map(|(name, account)| {
-            let item_source = account::connect(account)
-                .map_err(|err| SetupError::account(name.clone(), err))?;
+            let item_source =
+                account::connect(account).map_err(|err| SetupError::account(name.clone(), err))?;
             Ok((name, item_source))
         })
         .collect::<Result<BTreeMap<_, _>, SetupError>>()?;
@@ -331,12 +327,14 @@ fn try_main() -> Result<(), SetupError> {
     let targets = if matches.is_present("ALL_TARGETS") {
         config.targets.keys().cloned().collect()
     } else {
-        matches.values_of("TARGET")
+        matches
+            .values_of("TARGET")
             .map(|values| values.map(Into::into).collect())
             .unwrap_or(config.default_targets)
     };
 
-    let targets_to_use = config.targets
+    let targets_to_use = config
+        .targets
         .into_iter()
         .filter(|(name, _)| targets.iter().any(|target| target == name))
         .collect::<BTreeMap<_, _>>();
@@ -351,9 +349,11 @@ fn try_main() -> Result<(), SetupError> {
 
         let mut all_new_items = Vec::new();
         for (name, profile) in target.profiles {
-            let item_source = accounts.get(&profile.account)
+            let item_source = accounts
+                .get(&profile.account)
                 .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
-            let new_items = item_source.fetch_items(&profile.target, &profile.filters, &mut url_map)
+            let new_items = item_source
+                .fetch_items(&profile.target, &profile.filters, &mut url_map)
                 .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
             all_new_items.extend(new_items);
         }
@@ -362,16 +362,12 @@ fn try_main() -> Result<(), SetupError> {
             if let Err(err) = item {
                 error!(
                     "failed to write todo for {} in the {} target: {:?}",
-                    url,
-                    name,
-                    err,
+                    url, name, err,
                 );
                 errors.push((
                     format!(
                         "failed to write todo for {} in the {} target: {}",
-                        url,
-                        name,
-                        err,
+                        url, name, err,
                     ),
                     err,
                 ));
@@ -380,7 +376,10 @@ fn try_main() -> Result<(), SetupError> {
 
         for todo_item in all_new_items {
             let url = todo_item.url().into();
-            write_item(url, TodoFile::from_item(&target.directory, todo_item).map(|_| ()));
+            write_item(
+                url,
+                TodoFile::from_item(&target.directory, todo_item).map(|_| ()),
+            );
         }
 
         for mut todo_file in todo_files {

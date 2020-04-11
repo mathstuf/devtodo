@@ -77,7 +77,10 @@ impl TodoFile {
         let subcomponent = item.vtodo();
         let mut component = Component::new("VCALENDAR");
         component.set(Property::new("VERSION", "2.0"));
-        component.set(Property::new("PRODID", format!("{}{}", PRODID_PREFIX, PRODID_SUFFIX)));
+        component.set(Property::new(
+            "PRODID",
+            format!("{}{}", PRODID_PREFIX, PRODID_SUFFIX),
+        ));
         component.subcomponents.push(subcomponent);
 
         fs::write(&path, vobject::write_component(&component).as_bytes())
@@ -92,8 +95,11 @@ impl TodoFile {
 
     pub fn write(&mut self) -> TodoResult<()> {
         if self.sync() == Updated::Yes {
-            fs::write(&self.path, vobject::write_component(&self.component).as_bytes())
-                .map_err(|err| TodoError::write_file(self.path.clone(), err))?;
+            fs::write(
+                &self.path,
+                vobject::write_component(&self.component).as_bytes(),
+            )
+            .map_err(|err| TodoError::write_file(self.path.clone(), err))?;
         }
 
         Ok(())
@@ -372,8 +378,7 @@ impl TodoItem {
         };
         let created = {
             let dtstamp = component.get_only("DTSTAMP")?.value_as_string();
-            let dt = NaiveDateTime::parse_from_str(&dtstamp, DATE_TIME_FMT)
-                .ok()?;
+            let dt = NaiveDateTime::parse_from_str(&dtstamp, DATE_TIME_FMT).ok()?;
 
             Utc.from_utc_datetime(&dt)
         };
@@ -392,7 +397,9 @@ impl TodoItem {
         let url = component.get_only("URL")?.value_as_string();
         let summary = component.get_only("SUMMARY")?.value_as_string();
         let description = component.get_only("DESCRIPTION")?.value_as_string();
-        let (last_modified, updated) = if let Some(last_modified) = component.get_only("LAST-MODIFIED") {
+        let (last_modified, updated) = if let Some(last_modified) =
+            component.get_only("LAST-MODIFIED")
+        {
             let dt = NaiveDateTime::parse_from_str(&last_modified.value_as_string(), DATE_TIME_FMT)
                 .ok()?;
 
@@ -420,9 +427,15 @@ impl TodoItem {
         let mut component = Component::new("VTODO");
 
         // Initialize the component.
-        component.set(Property::new("DTSTAMP", format!("{}", Utc::now().format(DATE_TIME_FMT))));
+        component.set(Property::new(
+            "DTSTAMP",
+            format!("{}", Utc::now().format(DATE_TIME_FMT)),
+        ));
         component.set(Property::new("UID", format!("{}", self.uid.0)));
-        component.set(Property::new("CREATED", format!("{}", self.created.format(DATE_TIME_FMT))));
+        component.set(Property::new(
+            "CREATED",
+            format!("{}", self.created.format(DATE_TIME_FMT)),
+        ));
         component.set(Property::new("CLASS", "CONFIDENTIAL"));
         component.set(Property::new("STATUS", self.status));
 
@@ -440,7 +453,10 @@ impl TodoItem {
             component.set(Property::new("DUE", format!("{}", due)));
         }
 
-        component.set(Property::new("LAST-MODIFIED", format!("{}", self.last_modified.format(DATE_TIME_FMT))));
+        component.set(Property::new(
+            "LAST-MODIFIED",
+            format!("{}", self.last_modified.format(DATE_TIME_FMT)),
+        ));
 
         if let Some(prop) = component.get_only("CATEGORIES") {
             let value = prop.value_as_string();
@@ -449,7 +465,11 @@ impl TodoItem {
 
             // See if we have any of the categories set.
             let kind_categories = categories
-                .filter(|&category| ALL_TODO_KINDS.iter().any(|kind| category == kind.category()))
+                .filter(|&category| {
+                    ALL_TODO_KINDS
+                        .iter()
+                        .any(|kind| category == kind.category())
+                })
                 .collect::<Vec<_>>();
 
             // Check if we have the right category already set.
@@ -457,7 +477,11 @@ impl TodoItem {
                 // OK
             } else {
                 let new_categories = all_categories
-                    .filter(|&category| ALL_TODO_KINDS.iter().all(|kind| category != kind.category()))
+                    .filter(|&category| {
+                        ALL_TODO_KINDS
+                            .iter()
+                            .all(|kind| category != kind.category())
+                    })
                     .chain(iter::once(self.kind.category()))
                     .format(",");
                 component.set(Property::new("CATEGORIES", format!("{}", new_categories)));

@@ -40,9 +40,7 @@ macro_rules! impl_issue_filter {
             fn add_filter(&mut self, filter: &Filter) {
                 match filter {
                     Filter::Label(label) => {
-                        self.labels
-                            .get_or_insert_with(Vec::new)
-                            .push(label.into())
+                        self.labels.get_or_insert_with(Vec::new).push(label.into())
                     },
                 }
             }
@@ -56,15 +54,18 @@ macro_rules! impl_issue {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
             fn from(issue: $type) -> Self {
-                let due = issue.milestone
-                    .and_then(|m| m.due_on)
-                    .map(Due::DateTime);
+                let due = issue.milestone.and_then(|m| m.due_on).map(Due::DateTime);
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::Issue;
                 let status = match issue.state {
                     <$state>::CLOSED => TodoStatus::Completed,
                     <$state>::OPEN => {
-                        if issue.assignees.assignees.map(|v| v.is_empty()).unwrap_or(true) {
+                        if issue
+                            .assignees
+                            .assignees
+                            .map(|v| v.is_empty())
+                            .unwrap_or(true)
+                        {
                             TodoStatus::NeedsAction
                         } else {
                             TodoStatus::InProcess
@@ -89,15 +90,16 @@ macro_rules! impl_issue {
     };
 }
 
-impl_issue!(queries::viewer_issues::IssueInfo, queries::viewer_issues::IssueState);
+impl_issue!(
+    queries::viewer_issues::IssueInfo,
+    queries::viewer_issues::IssueState
+);
 
 macro_rules! impl_pull_request {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
             fn from(pr: $type) -> Self {
-                let due = pr.milestone
-                    .and_then(|m| m.due_on)
-                    .map(Due::DateTime);
+                let due = pr.milestone.and_then(|m| m.due_on).map(Due::DateTime);
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::PullRequest;
                 let status = match pr.state {
@@ -129,7 +131,10 @@ macro_rules! impl_pull_request {
     };
 }
 
-impl_pull_request!(queries::viewer_pull_requests::PullRequestInfo, queries::viewer_pull_requests::PullRequestState);
+impl_pull_request!(
+    queries::viewer_pull_requests::PullRequestInfo,
+    queries::viewer_pull_requests::PullRequestState
+);
 
 impl GithubQuery {
     pub fn new(host: Option<String>, token: String) -> Self {
@@ -152,7 +157,10 @@ impl GithubQuery {
         }
     }
 
-    fn query_user(client: &client::Github, filters: &[Filter]) -> Result<Vec<GithubItem>, ItemError> {
+    fn query_user(
+        client: &client::Github,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
         let mut issue_filters = queries::viewer_issues::IssueFilters {
             assignee: None,
             created_by: None,
@@ -177,16 +185,11 @@ impl GithubQuery {
         // Query for issue information.
         loop {
             let query = queries::ViewerIssues::build_query(input.clone());
-            let rsp = client.send::<queries::ViewerIssues>(&query)
+            let rsp = client
+                .send::<queries::ViewerIssues>(&query)
                 .map_err(|err| {
-                    error!(
-                        "failed to send viewer issue query: {:?}",
-                        err,
-                    );
-                    let message = format!(
-                        "failed to send viewer issue query: {}",
-                        err,
-                    );
+                    error!("failed to send viewer issue query: {:?}", err);
+                    let message = format!("failed to send viewer issue query: {}", err);
                     ItemError::QueryError {
                         service: "github",
                         message,
@@ -197,12 +200,14 @@ impl GithubQuery {
                 &rsp.rate_limit_info.rate_limit,
                 queries::ViewerIssues::name(),
             );
-            let (issues, page_info) = (
-                rsp.viewer.issues.items,
-                rsp.viewer.issues.page_info,
-            );
+            let (issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
             if let Some(issues) = issues {
-                items.extend(issues.into_iter().filter_map(|x| x).map(|issue| issue.issue_info.into()));
+                items.extend(
+                    issues
+                        .into_iter()
+                        .filter_map(|x| x)
+                        .map(|issue| issue.issue_info.into()),
+                );
             }
 
             if page_info.has_next_page {
@@ -224,7 +229,8 @@ impl GithubQuery {
         for filter in filters {
             match filter {
                 Filter::Label(label) => {
-                    input.labels
+                    input
+                        .labels
                         .get_or_insert_with(Vec::new)
                         .push(label.clone())
                 },
@@ -234,16 +240,11 @@ impl GithubQuery {
         // Query for pull requests information.
         loop {
             let query = queries::ViewerPullRequests::build_query(input.clone());
-            let rsp = client.send::<queries::ViewerPullRequests>(&query)
+            let rsp = client
+                .send::<queries::ViewerPullRequests>(&query)
                 .map_err(|err| {
-                    error!(
-                        "failed to send viewer pull request query: {:?}",
-                        err,
-                    );
-                    let message = format!(
-                        "failed to send viewer pull request query: {}",
-                        err,
-                    );
+                    error!("failed to send viewer pull request query: {:?}", err);
+                    let message = format!("failed to send viewer pull request query: {}", err);
                     ItemError::QueryError {
                         service: "github",
                         message,
@@ -259,7 +260,11 @@ impl GithubQuery {
                 rsp.viewer.pull_requests.page_info,
             );
             if let Some(prs) = prs {
-                items.extend(prs.into_iter().filter_map(|x| x).map(|pr| pr.pull_request_info.into()));
+                items.extend(
+                    prs.into_iter()
+                        .filter_map(|x| x)
+                        .map(|pr| pr.pull_request_info.into()),
+                );
             }
 
             if page_info.has_next_page {
@@ -277,22 +282,29 @@ impl GithubQuery {
         Ok(items)
     }
 
-    fn query_projects(client: &client::Github, projects: &[String], filters: &[Filter]) -> Result<Vec<GithubItem>, ItemError> {
+    fn query_projects(
+        client: &client::Github,
+        projects: &[String],
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
         unimplemented!()
     }
 }
 
 impl ItemSource for GithubQuery {
-    fn fetch_items(&self, target: &QueryTarget, filters: &[Filter], existing_items: &mut ItemLookup) -> Result<Vec<TodoItem>, ItemError> {
-        let client = self.client
+    fn fetch_items(
+        &self,
+        target: &QueryTarget,
+        filters: &[Filter],
+        existing_items: &mut ItemLookup,
+    ) -> Result<Vec<TodoItem>, ItemError> {
+        let client = self
+            .client
             .get_or_create(|info| client::Github::new(&info.host, &info.token))
             .as_ref()
             .map_err(|err| {
                 self.init_error_cell.get_or_init(|| {
-                    error!(
-                        "failed to connect to github instance: {:?}",
-                        err,
-                    );
+                    error!("failed to connect to github instance: {:?}", err);
                 });
                 ItemError::ServiceError {
                     service: "github",
@@ -300,12 +312,8 @@ impl ItemSource for GithubQuery {
             })?;
 
         let results = match target {
-            QueryTarget::SelfUser => {
-                Self::query_user(client, filters)
-            },
-            QueryTarget::Projects(projects) => {
-                Self::query_projects(client, projects, filters)
-            },
+            QueryTarget::SelfUser => Self::query_user(client, filters),
+            QueryTarget::Projects(projects) => Self::query_projects(client, projects, filters),
         };
 
         Ok(results?
@@ -333,8 +341,7 @@ impl ItemSource for GithubQuery {
                         item.due(due);
                     }
 
-                    let item = item.build()
-                        .expect("all item fields should be provided");
+                    let item = item.build().expect("all item fields should be provided");
 
                     Some(item)
                 }

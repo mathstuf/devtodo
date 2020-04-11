@@ -20,9 +20,7 @@ mod github;
 #[error("failed to fetch items")]
 pub enum ItemError {
     #[error("service error for {}", service)]
-    ServiceError {
-        service: &'static str,
-    },
+    ServiceError { service: &'static str },
     #[error("query error for {}: {}", service, message)]
     QueryError {
         service: &'static str,
@@ -33,26 +31,30 @@ pub enum ItemError {
 pub type ItemLookup<'a> = BTreeMap<String, &'a mut TodoItem>;
 
 pub trait ItemSource {
-    fn fetch_items(&self, target: &QueryTarget, filters: &[Filter], existing_items: &mut ItemLookup) -> Result<Vec<TodoItem>, ItemError>;
+    fn fetch_items(
+        &self,
+        target: &QueryTarget,
+        filters: &[Filter],
+        existing_items: &mut ItemLookup,
+    ) -> Result<Vec<TodoItem>, ItemError>;
 }
 
 #[derive(Debug, Error)]
 pub enum AccountError {
     #[error("unsupported service: {}", service)]
-    UnsupportedService {
-        service: &'static str,
-    },
+    UnsupportedService { service: &'static str },
     #[error("unknown service: {}", service)]
-    UnknownService {
-        service: String,
-    },
+    UnknownService { service: String },
 }
 
 pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
     match account.service.as_ref() {
         #[cfg(feature = "github")]
         "github" => {
-            Ok(Box::new(github::GithubQuery::new(account.hostname, account.secret)))
+            Ok(Box::new(github::GithubQuery::new(
+                account.hostname,
+                account.secret,
+            )))
         },
         #[cfg(not(feature = "github"))]
         "github" => {

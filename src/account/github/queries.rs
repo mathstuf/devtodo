@@ -6,7 +6,7 @@
 
 use chrono::{self, Utc};
 use graphql_client::GraphQLQuery;
-use log::{Level, log, trace};
+use log::{log, trace, Level};
 
 type DateTime = chrono::DateTime<Utc>;
 type URI = String;
@@ -90,11 +90,7 @@ impl RateLimitInfo {
         };
 
         log!(level, "{}: {}", name, msg);
-        trace!(
-            "rate limit cost: {} / {}",
-            self.cost,
-            self.limit,
-        );
+        trace!("rate limit cost: {} / {}", self.cost, self.limit);
     }
 }
 
