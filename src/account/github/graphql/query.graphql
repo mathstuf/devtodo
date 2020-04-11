@@ -18,9 +18,9 @@ fragment MannequinActorInfo on Mannequin {
 }
 
 # TODO: query the team for membership.
-fragment TeamInfo on Team {
-    id
-}
+# fragment TeamInfo on Team {
+#     id
+# }
 
 fragment RateLimitInfo on Query {
     rateLimit {
@@ -81,13 +81,14 @@ fragment PullRequestInfo on PullRequest {
     state
     title
     url
-    reviewRequests {
+    # We only care about the first 10 review requests.
+    reviewRequests(first: 10) {
         reviewers: nodes {
             requestedReviewer {
                 __typename
                 ...MannequinActorInfo
                 ...UserInfo
-                ...TeamInfo
+                # ...TeamInfo
             }
         }
     }
