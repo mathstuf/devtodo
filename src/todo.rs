@@ -309,6 +309,10 @@ pub struct TodoItem {
 }
 
 impl TodoItem {
+    pub fn builder() -> TodoItemBuilder {
+        TodoItemBuilder::default()
+    }
+
     pub fn set_due(&mut self, new_due: Due) {
         if self.due.as_ref().map(|&due| due != new_due).unwrap_or(true) {
             self.due = Some(new_due);
