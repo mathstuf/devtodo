@@ -9,6 +9,8 @@ use thiserror::Error;
 use crate::config::{Account, Filter, QueryTarget};
 use crate::todo::TodoItem;
 
+mod prelude;
+
 #[derive(Debug, Error)]
 #[error("failed to fetch items")]
 pub enum ItemError {
