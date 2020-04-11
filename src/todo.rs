@@ -371,10 +371,9 @@ impl TodoItem {
         let kind = {
             let categories_value = component.get_only("CATEGORIES")?.value_as_string();
             let categories = categories_value.split(',').collect::<Vec<_>>();
-            ALL_TODO_KINDS
+            *ALL_TODO_KINDS
                 .iter()
                 .find(|kind| categories.contains(&kind.category()))?
-                .clone()
         };
         let created = {
             let dtstamp = component.get_only("DTSTAMP")?.value_as_string();
@@ -431,7 +430,7 @@ impl TodoItem {
             "DTSTAMP",
             format!("{}", Utc::now().format(DATE_TIME_FMT)),
         ));
-        component.set(Property::new("UID", format!("{}", self.uid.0)));
+        component.set(Property::new("UID", self.uid.0.clone()));
         component.set(Property::new(
             "CREATED",
             format!("{}", self.created.format(DATE_TIME_FMT)),
