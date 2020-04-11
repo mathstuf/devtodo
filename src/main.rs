@@ -87,6 +87,10 @@ enum SetupError {
         profile: String,
         source: account::ItemError,
     },
+    #[error("failed to write {} items", errors.len())]
+    WriteErrors {
+        errors: Vec<(String, todo::TodoError)>,
+    },
 }
 
 impl SetupError {
@@ -153,15 +157,21 @@ impl SetupError {
             source,
         }
     }
+
+    fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
+        Self::WriteErrors {
+            errors,
+        }
+    }
 }
 
-fn read_directory(dirpath: &Path, name: String) -> Result<Vec<TodoFile>, SetupError> {
+fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupError> {
     let mut todo_files = Vec::new();
     let dir_iter = fs::read_dir(dirpath)
-        .map_err(|err| SetupError::read_dir(dirpath.into(), name.clone(), err))?;
+        .map_err(|err| SetupError::read_dir(dirpath.into(), name.into(), err))?;
     for entry in dir_iter {
         let entry = entry
-            .map_err(|err| SetupError::read_entry(name.clone(), err))?;
+            .map_err(|err| SetupError::read_entry(name.into(), err))?;
         let path = entry.path();
 
         // Only look at `.ics` files.
@@ -331,8 +341,9 @@ fn try_main() -> Result<(), SetupError> {
         .filter(|(name, _)| targets.iter().any(|target| target == name))
         .collect::<BTreeMap<_, _>>();
 
+    let mut errors = Vec::new();
     for (name, target) in targets_to_use {
-        let mut todo_files = read_directory(&target.directory, name)?;
+        let mut todo_files = read_directory(&target.directory, &name)?;
         let url_map = todo_files
             .iter_mut()
             .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
@@ -347,9 +358,55 @@ fn try_main() -> Result<(), SetupError> {
                 .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
             all_new_items.extend(new_items);
         }
+
+        for todo_item in all_new_items {
+            let url: String = todo_item.url().into();
+            if let Err(err) = TodoFile::from_item(&target.directory, todo_item) {
+                error!(
+                    "failed to write todo for {} in the {} target: {:?}",
+                    url,
+                    name,
+                    err,
+                );
+                errors.push((
+                    format!(
+                        "failed to write todo for {} in the {} target: {}",
+                        url,
+                        name,
+                        err,
+                    ),
+                    err,
+                ));
+            }
+        }
+
+        for mut todo_file in todo_files {
+            let url: String = todo_file.item.url().into();
+            if let Err(err) = todo_file.write() {
+                error!(
+                    "failed to write todo for {} in the {} target: {}",
+                    url,
+                    name,
+                    err,
+                );
+                errors.push((
+                    format!(
+                        "failed to write todo for {} in the {} target: {}",
+                        url,
+                        name,
+                        err,
+                    ),
+                    err,
+                ));
+            }
+        }
     }
 
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(SetupError::write_errors(errors))
+    }
 }
 
 fn main() {
