@@ -1,0 +1,132 @@
+# Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+# http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+# <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+# option. This file may not be copied, modified, or distributed
+# except according to those terms.
+
+fragment UserInfo on User {
+    name
+    login
+    # XXX(github): It seems that having the `user:email` scope in the
+    # application isn't enough. Some OAuth hoops may be necessary here.
+    # email
+}
+
+fragment MannequinActorInfo on Mannequin {
+    login
+    email
+}
+
+# TODO: query the team for membership.
+fragment TeamInfo on Team {
+    id
+}
+
+fragment RateLimitInfo on Query {
+    rateLimit {
+        cost
+        limit
+        remaining
+        resetAt
+    }
+}
+
+fragment IssueInfo on Issue {
+    # Only 25 labels per issue is supported.
+    labels(first: 25) {
+        labels: nodes {
+            __typename
+            name
+        }
+    }
+    body
+    closed
+    closedAt
+    createdAt
+    lastEditedAt
+    milestone {
+        dueOn
+        updatedAt
+    }
+    state
+    title
+    url
+    # We only "care" about the first assignee, but get extras in case we get
+    # back `null` nodes.
+    assignees(first: 5) {
+        assignees: nodes {
+            __typename
+            login
+        }
+    }
+}
+
+fragment PullRequestInfo on PullRequest {
+    # Only 25 labels per issue is supported.
+    labels(first: 25) {
+        labels: nodes {
+            __typename
+            name
+        }
+    }
+    body
+    closed
+    closedAt
+    createdAt
+    lastEditedAt
+    milestone {
+        dueOn
+        updatedAt
+    }
+    state
+    title
+    url
+    reviewRequests {
+        reviewers: nodes {
+            requestedReviewer {
+                __typename
+                ...MannequinActorInfo
+                ...UserInfo
+                ...TeamInfo
+            }
+        }
+    }
+    # We only "care" about the first assignee, but get extras in case we get
+    # back `null` nodes.
+    assignees(first: 5) {
+        assignees: nodes {
+            __typename
+            login
+        }
+    }
+}
+
+query ViewerIssues($filterBy: IssueFilters!, $cursor: String) {
+    viewer {
+        issues(filterBy: $filterBy, first: 100, after: $cursor) {
+            items: nodes {
+                ...IssueInfo
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+            }
+        }
+    }
+    ...RateLimitInfo
+}
+
+query ViewerPullRequests($labels: [String!], $cursor: String) {
+    viewer {
+        pullRequests(labels: $labels, first: 100, after: $cursor) {
+            items: nodes {
+                ...PullRequestInfo
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+            }
+        }
+    }
+    ...RateLimitInfo
+}
