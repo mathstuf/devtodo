@@ -15,8 +15,7 @@ use log::{info, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{self, Url};
-use serde::{Deserialize, Serialize};
-use serde_json::{self, Value};
+use serde::Deserialize;
 use thiserror::Error;
 
 // The maximum number of times we will retry server errors.
@@ -119,8 +118,6 @@ pub const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_P
 pub struct Github {
     /// The client used to communicate with Github.
     client: Client,
-    /// The endpoint for REST queries.
-    rest_endpoint: Url,
     /// The endpoint for GraphQL queries.
     gql_endpoint: Url,
 
@@ -133,12 +130,10 @@ impl Github {
     where
         T: Into<String>,
     {
-        let rest_endpoint = Url::parse(&format!("https://{}/", host))?;
         let gql_endpoint = Url::parse(&format!("https://{}/graphql", host))?;
 
         Ok(Github {
             client: Client::new(),
-            rest_endpoint,
             gql_endpoint,
             token: token.into(),
         })
@@ -152,29 +147,6 @@ impl Github {
             .iter()
             .cloned()
             .collect())
-    }
-
-    pub fn post<D>(&self, endpoint: &str, data: &D) -> GithubResult<Value>
-    where
-        D: Serialize,
-    {
-        let endpoint = Url::parse(&format!("{}{}", self.rest_endpoint, endpoint))?;
-        let rsp = self
-            .client
-            .post(endpoint.clone())
-            .headers(self.installation_auth_header()?)
-            .header(header::USER_AGENT, USER_AGENT)
-            .json(data)
-            .send()
-            .map_err(|err| GithubError::send_request(endpoint, err))?;
-        if !rsp.status().is_success() {
-            let err = rsp
-                .text()
-                .unwrap_or_else(|text_err| format!("failed to extract error body: {:?}", text_err));
-            return Err(GithubError::github(err));
-        }
-
-        rsp.json().map_err(GithubError::json_response)
     }
 
     /// Send a GraphQL query.
