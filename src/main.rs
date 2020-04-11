@@ -344,17 +344,16 @@ fn try_main() -> Result<(), SetupError> {
     let mut errors = Vec::new();
     for (name, target) in targets_to_use {
         let mut todo_files = read_directory(&target.directory, &name)?;
-        let url_map = todo_files
+        let mut url_map = todo_files
             .iter_mut()
             .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
             .collect::<BTreeMap<String, _>>();
 
-        let lookup_url = |url| url_map.get(url);
         let mut all_new_items = Vec::new();
         for (name, profile) in target.profiles {
             let item_source = accounts.get(&profile.account)
                 .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
-            let new_items = item_source.fetch_items(&profile.target, &profile.filters, &lookup_url)
+            let new_items = item_source.fetch_items(&profile.target, &profile.filters, &mut url_map)
                 .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
             all_new_items.extend(new_items);
         }

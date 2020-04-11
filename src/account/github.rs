@@ -54,7 +54,7 @@ impl GithubQuery {
 }
 
 impl ItemSource for GithubQuery {
-    fn fetch_items<'a, 'b>(&self, target: &QueryTarget, filters: &[Filter], existing_items: &dyn Fn(&'b str) -> Option<&&'a mut TodoItem>) -> Result<Vec<TodoItem>, ItemError> {
+    fn fetch_items(&self, target: &QueryTarget, filters: &[Filter], existing_items: &mut ItemLookup) -> Result<Vec<TodoItem>, ItemError> {
         let client = self.client
             .get_or_create(|info| client::Github::new(&info.host, &info.token))
             .as_ref()
@@ -82,7 +82,7 @@ impl ItemSource for GithubQuery {
         Ok(results?
             .into_iter()
             .filter_map(|result| {
-                if let Some(&item) = existing_items(&result.url) {
+                if let Some(item) = existing_items.get_mut(&result.url) {
                     if let Some(due) = result.due {
                         item.set_due(due);
                     }
@@ -98,7 +98,7 @@ impl ItemSource for GithubQuery {
 
                     item.kind(result.kind)
                         .status(result.status)
-                        .url(result.url)
+                        .url(result.url.clone())
                         .summary(result.summary);
 
                     if let Some(due) = result.due {

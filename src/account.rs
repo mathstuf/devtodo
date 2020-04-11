@@ -4,6 +4,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::collections::BTreeMap;
+
 use thiserror::Error;
 
 use crate::config::{Account, Filter, QueryTarget};
@@ -23,8 +25,10 @@ pub enum ItemError {
     },
 }
 
+pub type ItemLookup<'a> = BTreeMap<String, &'a mut TodoItem>;
+
 pub trait ItemSource {
-    fn fetch_items<'a, 'b>(&self, target: &QueryTarget, filters: &[Filter], existing_items: &dyn Fn(&'b str) -> Option<&&'a mut TodoItem>) -> Result<Vec<TodoItem>, ItemError>;
+    fn fetch_items(&self, target: &QueryTarget, filters: &[Filter], existing_items: &mut ItemLookup) -> Result<Vec<TodoItem>, ItemError>;
 }
 
 #[derive(Debug, Error)]

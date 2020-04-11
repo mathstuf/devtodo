@@ -7,6 +7,7 @@
 pub use std::error::Error;
 
 pub use crate::account::ItemError;
+pub use crate::account::ItemLookup;
 pub use crate::account::ItemSource;
 pub use crate::config::Filter;
 pub use crate::config::QueryTarget;
