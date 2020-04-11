@@ -23,8 +23,8 @@ pub struct Config {
 pub struct Account {
     pub service: String,
     #[serde(default)]
-    hostname: Option<String>,
-    secret: String,
+    pub hostname: Option<String>,
+    pub secret: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -11,15 +11,16 @@ use crate::todo::TodoItem;
 
 mod prelude;
 
+#[cfg(feature = "github")]
+mod github;
+
 #[derive(Debug, Error)]
 #[error("failed to fetch items")]
 pub enum ItemError {
-    #[error("unreachable host: {}", host)]
-    UnreachableHost {
-        host: String,
+    #[error("service error for {}", service)]
+    ServiceError {
+        service: &'static str,
     },
-    #[error("invalid secret")]
-    InvalidSecrets,
 }
 
 pub trait ItemSource {
@@ -28,6 +29,10 @@ pub trait ItemSource {
 
 #[derive(Debug, Error)]
 pub enum AccountError {
+    #[error("unsupported service: {}", service)]
+    UnsupportedService {
+        service: &'static str,
+    },
     #[error("unknown service: {}", service)]
     UnknownService {
         service: String,
@@ -35,10 +40,21 @@ pub enum AccountError {
 }
 
 pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
-    match account.service {
+    match account.service.as_ref() {
+        #[cfg(feature = "github")]
+        "github" => {
+            Ok(Box::new(github::GithubQuery::new(account.hostname, account.secret)))
+        },
+        #[cfg(not(feature = "github"))]
+        "github" => {
+            Err(AccountError::UnsupportedService {
+                service: "github",
+            })
+        },
+
         service => {
             Err(AccountError::UnknownService {
-                service,
+                service: service.into(),
             })
         },
     }
