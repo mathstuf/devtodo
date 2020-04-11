@@ -6,15 +6,15 @@
 
 use std::env;
 use std::fmt::Debug;
-use std::future::Future;
 use std::thread;
 use std::time::Duration;
 
 use graphql_client::{GraphQLQuery, QueryBody, Response};
 use itertools::Itertools;
 use log::{info, warn};
+use reqwest::blocking::Client;
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use reqwest::{self, Client, Url};
+use reqwest::{self, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use thiserror::Error;
@@ -157,7 +157,7 @@ impl Github {
             .collect())
     }
 
-    pub async fn post<D>(&self, endpoint: &str, data: &D) -> GithubResult<Value>
+    pub fn post<D>(&self, endpoint: &str, data: &D) -> GithubResult<Value>
     where
         D: Serialize,
     {
@@ -169,21 +169,19 @@ impl Github {
             .header(header::USER_AGENT, USER_AGENT)
             .json(data)
             .send()
-            .await
             .map_err(|err| GithubError::send_request(endpoint, err))?;
         if !rsp.status().is_success() {
             let err = rsp
                 .text()
-                .await
                 .unwrap_or_else(|text_err| format!("failed to extract error body: {:?}", text_err));
             return Err(GithubError::github(err));
         }
 
-        rsp.json().await.map_err(GithubError::json_response)
+        rsp.json().map_err(GithubError::json_response)
     }
 
     /// Send a GraphQL query.
-    async fn send_impl<Q>(
+    fn send_impl<Q>(
         &self,
         query: &QueryBody<Q::Variables>,
     ) -> GithubResult<Q::ResponseData>
@@ -205,7 +203,6 @@ impl Github {
             .header(header::USER_AGENT, USER_AGENT)
             .json(query)
             .send()
-            .await
             .map_err(|err| GithubError::send_request(self.gql_endpoint.clone(), err))?;
         if rsp.status().is_server_error() {
             warn!(
@@ -218,12 +215,11 @@ impl Github {
         if !rsp.status().is_success() {
             let err = rsp
                 .text()
-                .await
                 .unwrap_or_else(|text_err| format!("failed to extract error body: {:?}", text_err));
             return Err(GithubError::github(err));
         }
 
-        let rsp: Response<Q::ResponseData> = rsp.json().await.map_err(GithubError::json_response)?;
+        let rsp: Response<Q::ResponseData> = rsp.json().map_err(GithubError::json_response)?;
         if let Some(errs) = rsp.errors {
             return Err(GithubError::graphql(errs));
         }
@@ -231,7 +227,7 @@ impl Github {
     }
 
     /// Send a GraphQL query.
-    pub async fn send<Q>(
+    pub fn send<Q>(
         &self,
         query: &QueryBody<Q::Variables>,
     ) -> GithubResult<Q::ResponseData>
@@ -240,18 +236,17 @@ impl Github {
         Q::Variables: Debug,
         for<'d> Q::ResponseData: Deserialize<'d>,
     {
-        retry_with_backoff(|| self.send_impl::<Q>(query)).await
+        retry_with_backoff(|| self.send_impl::<Q>(query))
     }
 }
 
-async fn retry_with_backoff<F, Ft, K>(mut go: F) -> GithubResult<K>
+fn retry_with_backoff<F, K>(mut go: F) -> GithubResult<K>
 where
-    F: FnMut() -> Ft,
-    Ft: Future<Output = GithubResult<K>>,
+    F: FnMut() -> GithubResult<K>,
 {
     let mut timeout = BACKOFF_START;
     for _ in 0..BACKOFF_LIMIT {
-        match go().await {
+        match go() {
             Ok(r) => return Ok(r),
             Err(err) => {
                 if err.should_backoff() {

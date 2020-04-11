@@ -152,7 +152,7 @@ impl GithubQuery {
         }
     }
 
-    async fn query_user(client: &client::Github, filters: &[Filter]) -> Result<Vec<GithubItem>, ItemError> {
+    fn query_user(client: &client::Github, filters: &[Filter]) -> Result<Vec<GithubItem>, ItemError> {
         let mut issue_filters = queries::viewer_issues::IssueFilters {
             assignee: None,
             created_by: None,
@@ -178,7 +178,6 @@ impl GithubQuery {
         loop {
             let query = queries::ViewerIssues::build_query(input.clone());
             let rsp = client.send::<queries::ViewerIssues>(&query)
-                .await
                 .map_err(|err| {
                     error!(
                         "failed to send viewer issue query: {:?}",
@@ -236,7 +235,6 @@ impl GithubQuery {
         loop {
             let query = queries::ViewerPullRequests::build_query(input.clone());
             let rsp = client.send::<queries::ViewerPullRequests>(&query)
-                .await
                 .map_err(|err| {
                     error!(
                         "failed to send viewer pull request query: {:?}",
@@ -303,7 +301,7 @@ impl ItemSource for GithubQuery {
 
         let results = match target {
             QueryTarget::SelfUser => {
-                futures::executor::block_on(Self::query_user(client, filters))
+                Self::query_user(client, filters)
             },
             QueryTarget::Projects(projects) => {
                 Self::query_projects(client, projects, filters)
