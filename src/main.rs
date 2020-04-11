@@ -358,9 +358,8 @@ fn try_main() -> Result<(), SetupError> {
             all_new_items.extend(new_items);
         }
 
-        for todo_item in all_new_items {
-            let url: String = todo_item.url().into();
-            if let Err(err) = TodoFile::from_item(&target.directory, todo_item) {
+        let mut write_item = |url: String, item| {
+            if let Err(err) = item {
                 error!(
                     "failed to write todo for {} in the {} target: {:?}",
                     url,
@@ -377,27 +376,16 @@ fn try_main() -> Result<(), SetupError> {
                     err,
                 ));
             }
+        };
+
+        for todo_item in all_new_items {
+            let url = todo_item.url().into();
+            write_item(url, TodoFile::from_item(&target.directory, todo_item).map(|_| ()));
         }
 
         for mut todo_file in todo_files {
-            let url: String = todo_file.item.url().into();
-            if let Err(err) = todo_file.write() {
-                error!(
-                    "failed to write todo for {} in the {} target: {}",
-                    url,
-                    name,
-                    err,
-                );
-                errors.push((
-                    format!(
-                        "failed to write todo for {} in the {} target: {}",
-                        url,
-                        name,
-                        err,
-                    ),
-                    err,
-                ));
-            }
+            let url = todo_file.item.url().into();
+            write_item(url, todo_file.write());
         }
     }
 
