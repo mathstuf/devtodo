@@ -346,6 +346,9 @@ impl TodoItem {
         D: Into<String>,
     {
         let new_description = new_description.into();
+        // Replace CR in the new description with nothing. These are lost upon reading them back
+        // from the ical format.
+        let new_description = new_description.replace('\r', "");
         if self.description != new_description {
             self.description = new_description;
             self.last_modified = Utc::now();
