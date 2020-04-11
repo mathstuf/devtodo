@@ -36,9 +36,9 @@ pub struct SyncTarget {
 #[derive(Debug, Deserialize)]
 pub struct Profile {
     pub account: String,
-    target: QueryTarget,
+    pub target: QueryTarget,
     #[serde(default)]
-    filters: Vec<Filter>,
+    pub filters: Vec<Filter>,
 }
 
 #[derive(Debug, Deserialize)]

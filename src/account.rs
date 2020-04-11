@@ -21,7 +21,7 @@ pub enum ItemError {
 }
 
 pub trait ItemSource {
-    fn fetch_items(&self, target: QueryTarget, filters: &[Filter]) -> Result<Vec<TodoItem>, ItemError>;
+    fn fetch_items<'a, 'b>(&self, target: &QueryTarget, filters: &[Filter], existing_items: &dyn Fn(&'b str) -> Option<&&'a mut TodoItem>) -> Result<Vec<TodoItem>, ItemError>;
 }
 
 #[derive(Debug, Error)]

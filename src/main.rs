@@ -81,6 +81,12 @@ enum SetupError {
     NoSuchAccount {
         name: String,
     },
+    #[error("failed to fetch items from the {} account for the {} profile", account, profile)]
+    FetchItems {
+        account: String,
+        profile: String,
+        source: account::ItemError,
+    },
 }
 
 impl SetupError {
@@ -137,6 +143,14 @@ impl SetupError {
     fn no_such_account(name: String) -> Self {
         Self::NoSuchAccount {
             name,
+        }
+    }
+
+    fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
+        Self::FetchItems {
+            account,
+            profile,
+            source,
         }
     }
 }
@@ -324,9 +338,14 @@ fn try_main() -> Result<(), SetupError> {
             .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
             .collect::<BTreeMap<String, _>>();
 
+        let lookup_url = |url| url_map.get(url);
+        let mut all_new_items = Vec::new();
         for (name, profile) in target.profiles {
             let item_source = accounts.get(&profile.account)
                 .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
+            let new_items = item_source.fetch_items(&profile.target, &profile.filters, &lookup_url)
+                .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
+            all_new_items.extend(new_items);
         }
     }
 
