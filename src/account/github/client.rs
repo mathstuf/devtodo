@@ -140,7 +140,7 @@ impl Github {
     }
 
     /// The authorization header for GraphQL.
-    fn installation_auth_header(&self) -> GithubResult<HeaderMap> {
+    fn auth_header(&self) -> GithubResult<HeaderMap> {
         let mut header_value: HeaderValue = format!("bearer {}", self.token).parse().unwrap();
         header_value.set_sensitive(true);
         Ok([(header::AUTHORIZATION, header_value)]
@@ -165,7 +165,7 @@ impl Github {
         let rsp = self
             .client
             .post(self.gql_endpoint.clone())
-            .headers(self.installation_auth_header()?)
+            .headers(self.auth_header()?)
             .header(header::USER_AGENT, USER_AGENT)
             .json(query)
             .send()
