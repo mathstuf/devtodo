@@ -11,7 +11,7 @@ use std::iter;
 use std::ops;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use derive_builder::Builder;
 use itertools::Itertools;
 use thiserror::Error;
@@ -241,8 +241,8 @@ pub enum Due {
 
 impl Due {
     fn from_str(s: &str) -> Option<Self> {
-        Some(match DateTime::parse_from_str(s, DATE_TIME_FMT) {
-            Ok(dt) => Due::DateTime(dt.with_timezone(&Utc)),
+        Some(match NaiveDateTime::parse_from_str(s, DATE_TIME_FMT) {
+            Ok(dt) => Due::DateTime(Utc.from_utc_datetime(&dt)),
             Err(_) => NaiveDate::parse_from_str(s, DATE_FMT).map(Due::Date).ok()?,
         })
     }
@@ -369,9 +369,10 @@ impl TodoItem {
         };
         let created = {
             let dtstamp = component.get_only("DTSTAMP")?.value_as_string();
-            DateTime::parse_from_str(&dtstamp, DATE_TIME_FMT)
-                .ok()?
-                .with_timezone(&Utc)
+            let dt = NaiveDateTime::parse_from_str(&dtstamp, DATE_TIME_FMT)
+                .ok()?;
+
+            Utc.from_utc_datetime(&dt)
         };
         let due = if let Some(due) = component.get_only("DUE") {
             Some(Due::from_str(&due.value_as_string())?)
@@ -389,11 +390,10 @@ impl TodoItem {
         let summary = component.get_only("SUMMARY")?.value_as_string();
         let description = component.get_only("DESCRIPTION")?.value_as_string();
         let (last_modified, updated) = if let Some(last_modified) = component.get_only("LAST-MODIFIED") {
-            let dt = DateTime::parse_from_str(&last_modified.value_as_string(), DATE_TIME_FMT)
-                .ok()?
-                .with_timezone(&Utc);
+            let dt = NaiveDateTime::parse_from_str(&last_modified.value_as_string(), DATE_TIME_FMT)
+                .ok()?;
 
-            (dt, false)
+            (Utc.from_utc_datetime(&dt), false)
         } else {
             // Missing a time? Set it to now; we'll write it back later.
             (Utc::now(), true)
