@@ -196,11 +196,9 @@ version = "4.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08a9f1ab5e9f01a9b81f202e8562eb9a10de70abf9eaeac1be465c28b75aa4aa"
 dependencies = [
- "anstream",
  "anstyle",
  "clap_lex",
  "once_cell",
- "strsim",
 ]
 
 [[package]]
