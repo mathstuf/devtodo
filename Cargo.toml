@@ -9,7 +9,7 @@ default = ["github"]
 github = ["graphql_client", "lazy-init", "once_cell", "reqwest", "serde_json", "url"]
 
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.0", features = ["cargo"] }
 derive_builder = "0.12"
 directories = "5.0"
