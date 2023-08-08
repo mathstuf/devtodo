@@ -19,10 +19,10 @@ itertools = "0.11"
 log = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
-serde_yaml = "0.8"
+serde_yaml = "0.9"
 thiserror = "1.0"
 uuid = { version = "1.4", features = ["v4"] }
-yaml-merge-keys = { version = "0.4", features = ["serde_yaml"] }
+yaml-merge-keys = { version = "0.6", features = ["serde_yaml"] }
 
 # github feature
 graphql_client = { version = "0.9", optional = true }
