@@ -284,7 +284,7 @@ impl Default for Uid {
     fn default() -> Self {
         let uuid = Uuid::new_v4();
 
-        Self(format!("{}", uuid.to_hyphenated()))
+        Self(format!("{}", uuid.hyphenated()))
     }
 }
 
