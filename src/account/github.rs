@@ -206,7 +206,7 @@ impl GithubQuery {
                     issues
                         .into_iter()
                         .filter_map(|x| x)
-                        .map(|issue| issue.issue_info.into()),
+                        .map(|issue| issue.into()),
                 );
             }
 
@@ -260,11 +260,7 @@ impl GithubQuery {
                 rsp.viewer.pull_requests.page_info,
             );
             if let Some(prs) = prs {
-                items.extend(
-                    prs.into_iter()
-                        .filter_map(|x| x)
-                        .map(|pr| pr.pull_request_info.into()),
-                );
+                items.extend(prs.into_iter().filter_map(|x| x).map(|pr| pr.into()));
             }
 
             if page_info.has_next_page {
