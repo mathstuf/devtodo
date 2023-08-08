@@ -9,6 +9,7 @@ use graphql_client::GraphQLQuery;
 use log::{log, trace, Level};
 
 type DateTime = chrono::DateTime<Utc>;
+#[allow(clippy::upper_case_acronyms)]
 type URI = String;
 
 macro_rules! gql_query_base {

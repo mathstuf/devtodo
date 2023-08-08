@@ -58,14 +58,7 @@ pub enum GithubError {
 
 impl GithubError {
     fn should_backoff(&self) -> bool {
-        if let GithubError::GithubService {
-            ..
-        } = self
-        {
-            true
-        } else {
-            false
-        }
+        matches!(self, GithubError::GithubService { .. })
     }
 
     pub fn send_request(endpoint: Url, source: reqwest::Error) -> Self {

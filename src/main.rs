@@ -9,7 +9,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use clap::{self, App, Arg};
+use clap::builder::PossibleValuesParser;
+use clap::{self, Arg, ArgAction, Command};
 use directories::ProjectDirs;
 use human_panic::setup_panic;
 use log::*;
@@ -224,54 +225,53 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
 }
 
 fn try_main() -> Result<(), SetupError> {
-    let matches = App::new("devtodo")
+    let matches = Command::new("devtodo")
         .version(clap::crate_version!())
         .author("Ben Boeckel <mathstuf@gmail.com>")
         .about("Query code hosting platforms for todo items to add to a calendar")
         .arg(
-            Arg::with_name("CONFIG")
-                .short("c")
+            Arg::new("CONFIG")
+                .short('c')
                 .long("config")
                 .help("Path to the configuration file")
                 .value_name("FILE")
-                .takes_value(true),
+                .action(ArgAction::Set),
         )
         .arg(
-            Arg::with_name("ALL_TARGETS")
-                .short("a")
+            Arg::new("ALL_TARGETS")
+                .short('a')
                 .long("all-targets")
                 .help("Sync all targets")
                 .conflicts_with("TARGET"),
         )
         .arg(
-            Arg::with_name("TARGET")
-                .short("t")
+            Arg::new("TARGET")
+                .short('t')
                 .long("target")
                 .help("Name of a target to sync")
-                .multiple(true)
-                .takes_value(true)
+                .action(ArgAction::Append)
                 .number_of_values(1),
         )
         .arg(
-            Arg::with_name("DEBUG")
-                .short("d")
+            Arg::new("DEBUG")
+                .short('d')
                 .long("debug")
                 .help("Increase verbosity")
-                .multiple(true),
+                .action(ArgAction::Count),
         )
         .arg(
-            Arg::with_name("LOGGER")
-                .short("l")
+            Arg::new("LOGGER")
+                .short('l')
                 .long("logger")
                 .default_value("env")
-                .possible_values(&["env"])
+                .value_parser(PossibleValuesParser::new(["env"]))
                 .help("Logging backend")
                 .value_name("LOGGER")
-                .takes_value(true),
+                .action(ArgAction::Set),
         )
         .get_matches();
 
-    let log_level = match matches.occurrences_of("DEBUG") {
+    let log_level = match matches.get_one::<u8>("DEBUG").copied().unwrap_or(0) {
         0 => LevelFilter::Error,
         1 => LevelFilter::Warn,
         2 => LevelFilter::Info,
@@ -280,8 +280,9 @@ fn try_main() -> Result<(), SetupError> {
     };
 
     let _logger = match matches
-        .value_of("LOGGER")
+        .get_one::<String>("LOGGER")
         .expect("logger should have a value")
+        .as_ref()
     {
         "env" => {
             env_logger::Builder::new().filter(None, log_level).init();
@@ -298,7 +299,7 @@ fn try_main() -> Result<(), SetupError> {
     let basedirs = ProjectDirs::from("net.benboeckel.devtodo", "", "devtodo")
         .ok_or(SetupError::NoProjectDir)?;
     let config: Config = {
-        let config_path = if let Some(config) = matches.value_of("CONFIG") {
+        let config_path = if let Some(config) = matches.get_one::<String>("CONFIG") {
             Path::new(config).into()
         } else {
             basedirs.config_dir().join("devtodo.yaml")
@@ -322,11 +323,11 @@ fn try_main() -> Result<(), SetupError> {
         })
         .collect::<Result<BTreeMap<_, _>, SetupError>>()?;
 
-    let targets = if matches.is_present("ALL_TARGETS") {
+    let targets = if matches.get_flag("ALL_TARGETS") {
         config.targets.keys().cloned().collect()
     } else {
         matches
-            .values_of("TARGET")
+            .get_many::<String>("TARGET")
             .map(|values| values.map(Into::into).collect())
             .unwrap_or(config.default_targets)
     };
