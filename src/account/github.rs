@@ -202,12 +202,7 @@ impl GithubQuery {
             );
             let (issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
             if let Some(issues) = issues {
-                items.extend(
-                    issues
-                        .into_iter()
-                        .filter_map(|x| x)
-                        .map(|issue| issue.into()),
-                );
+                items.extend(issues.into_iter().flatten().map(|issue| issue.into()));
             }
 
             if page_info.has_next_page {
@@ -260,7 +255,7 @@ impl GithubQuery {
                 rsp.viewer.pull_requests.page_info,
             );
             if let Some(prs) = prs {
-                items.extend(prs.into_iter().filter_map(|x| x).map(|pr| pr.into()));
+                items.extend(prs.into_iter().flatten().map(|pr| pr.into()));
             }
 
             if page_info.has_next_page {
