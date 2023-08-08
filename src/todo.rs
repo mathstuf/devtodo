@@ -130,19 +130,15 @@ impl TodoFile {
             fs::read_to_string(&path).map_err(|err| TodoError::read_file(path.clone(), err))?;
         let component = vobject::parse_component(&contents)?;
 
-        Ok(
-            if let Some(item) =
-                Self::extract_component(&component).and_then(TodoItem::from_component)
-            {
-                Some(Self {
+        Ok(Self::extract_component(&component)
+            .and_then(TodoItem::from_component)
+            .map(|item| {
+                Self {
                     path,
                     component,
                     item,
-                })
-            } else {
-                None
-            },
-        )
+                }
+            }))
     }
 
     fn is_our_component(component: &Component) -> Option<()> {
