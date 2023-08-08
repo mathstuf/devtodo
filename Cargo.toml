@@ -10,7 +10,7 @@ github = ["graphql_client", "lazy-init", "once_cell", "reqwest", "serde_json", "
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
-clap = "2.0"
+clap = { version = "4.0", features = ["cargo"] }
 derive_builder = "0.12"
 directories = "5.0"
 env_logger = "0.10"
