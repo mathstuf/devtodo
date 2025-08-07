@@ -18,10 +18,10 @@ human-panic = "1.0"
 itertools = "0.11"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9.28"
+serde_yml = "0.0.12"
 thiserror = "1.0"
 uuid = { version = "1.4", features = ["v4"] }
-yaml-merge-keys = { version = "0.6", features = ["serde_yaml"] }
+yaml-merge-keys = { version = "0.8", features = ["serde_yml"] }
 
 # github feature
 graphql_client = { version = "0.13", optional = true }
