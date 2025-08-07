@@ -79,7 +79,7 @@ impl TodoFile {
         component.set(Property::new("VERSION", "2.0"));
         component.set(Property::new(
             "PRODID",
-            format!("{}{}", PRODID_PREFIX, PRODID_SUFFIX),
+            format!("{PRODID_PREFIX}{PRODID_SUFFIX}"),
         ));
         component.subcomponents.push(subcomponent);
 
@@ -445,7 +445,7 @@ impl TodoItem {
         component.set(Property::new("DESCRIPTION", &self.description));
         component.set(Property::new("URL", &self.url));
         if let Some(due) = self.due {
-            component.set(Property::new("DUE", format!("{}", due)));
+            component.set(Property::new("DUE", format!("{due}")));
         }
 
         component.set(Property::new(
@@ -479,7 +479,7 @@ impl TodoItem {
                     })
                     .chain(iter::once(self.kind.category()))
                     .format(",");
-                component.set(Property::new("CATEGORIES", format!("{}", new_categories)));
+                component.set(Property::new("CATEGORIES", format!("{new_categories}")));
             }
         } else {
             component.set(Property::new("CATEGORIES", self.kind));

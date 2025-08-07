@@ -359,15 +359,9 @@ fn try_main() -> Result<(), SetupError> {
 
         let mut write_item = |url: String, item| {
             if let Err(err) = item {
-                error!(
-                    "failed to write todo for {} in the {} target: {:?}",
-                    url, name, err,
-                );
+                error!("failed to write todo for {url} in the {name} target: {err:?}");
                 errors.push((
-                    format!(
-                        "failed to write todo for {} in the {} target: {}",
-                        url, name, err,
-                    ),
+                    format!("failed to write todo for {url} in the {name} target: {err}"),
                     err,
                 ));
             }
@@ -398,7 +392,7 @@ fn main() {
     setup_panic!();
 
     if let Err(err) = try_main() {
-        error!("{:?}", err);
+        error!("{err:?}");
         panic!("{:?}", err);
     }
 }

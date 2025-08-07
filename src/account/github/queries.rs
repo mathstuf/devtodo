@@ -90,7 +90,7 @@ impl RateLimitInfo {
             },
         };
 
-        log!(level, "{}: {}", name, msg);
+        log!(level, "{name}: {msg}");
         trace!("rate limit cost: {} / {}", self.cost, self.limit);
     }
 }

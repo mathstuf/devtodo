@@ -188,8 +188,8 @@ impl GithubQuery {
             let rsp = client
                 .send::<queries::ViewerIssues>(&query)
                 .map_err(|err| {
-                    error!("failed to send viewer issue query: {:?}", err);
-                    let message = format!("failed to send viewer issue query: {}", err);
+                    error!("failed to send viewer issue query: {err:?}");
+                    let message = format!("failed to send viewer issue query: {err}");
                     ItemError::QueryError {
                         service: "github",
                         message,
@@ -238,8 +238,8 @@ impl GithubQuery {
             let rsp = client
                 .send::<queries::ViewerPullRequests>(&query)
                 .map_err(|err| {
-                    error!("failed to send viewer pull request query: {:?}", err);
-                    let message = format!("failed to send viewer pull request query: {}", err);
+                    error!("failed to send viewer pull request query: {err:?}");
+                    let message = format!("failed to send viewer pull request query: {err}");
                     ItemError::QueryError {
                         service: "github",
                         message,
@@ -295,7 +295,7 @@ impl ItemSource for GithubQuery {
             .as_ref()
             .map_err(|err| {
                 self.init_error_cell.get_or_init(|| {
-                    error!("failed to connect to github instance: {:?}", err);
+                    error!("failed to connect to github instance: {err:?}");
                 });
                 ItemError::ServiceError {
                     service: "github",
