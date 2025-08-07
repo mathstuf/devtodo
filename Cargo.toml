@@ -12,7 +12,7 @@ github = ["graphql_client", "lazy-init", "once_cell", "reqwest", "serde_json", "
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.0", default-features = false, features = ["cargo", "std"] }
 derive_builder = "0.20"
-directories = "5.0"
+directories = "6.0"
 env_logger = "0.11"
 human-panic = "2.0"
 itertools = "0.14"
