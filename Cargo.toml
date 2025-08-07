@@ -19,7 +19,7 @@ itertools = "0.14"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_yml = "0.0.12"
-thiserror = "1.0"
+thiserror = "2.0"
 uuid = { version = "1.4", features = ["v4"] }
 yaml-merge-keys = { version = "0.8", features = ["serde_yml"] }
 

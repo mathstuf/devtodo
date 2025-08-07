@@ -350,7 +350,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
- "thiserror 1.0.44",
+ "thiserror 2.0.12",
  "url",
  "uuid",
  "vobject",
