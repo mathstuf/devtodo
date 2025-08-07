@@ -123,7 +123,7 @@ impl Github {
     where
         T: Into<String>,
     {
-        let gql_endpoint = Url::parse(&format!("https://{}/graphql", host))?;
+        let gql_endpoint = Url::parse(&format!("https://{host}/graphql"))?;
 
         Ok(Github {
             client: Client::new(),
@@ -174,7 +174,7 @@ impl Github {
         if !rsp.status().is_success() {
             let err = rsp
                 .text()
-                .unwrap_or_else(|text_err| format!("failed to extract error body: {:?}", text_err));
+                .unwrap_or_else(|text_err| format!("failed to extract error body: {text_err:?}"));
             return Err(GithubError::github(err));
         }
 
