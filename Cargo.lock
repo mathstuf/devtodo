@@ -334,7 +334,6 @@ dependencies = [
  "itertools",
  "lazy-init",
  "log",
- "once_cell",
  "reqwest",
  "serde",
  "serde_json",

@@ -4,10 +4,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::cell::OnceCell;
+
 use graphql_client::GraphQLQuery;
 use lazy_init::LazyTransform;
 use log::{error, warn};
-use once_cell::sync::OnceCell;
 
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
