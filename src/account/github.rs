@@ -167,8 +167,10 @@ impl GithubQuery {
             labels: None,
             mentioned: None,
             milestone: None,
+            milestone_number: None,
             since: None,
             states: None,
+            type_: None,
             viewer_subscribed: None,
         };
         for filter in filters {
