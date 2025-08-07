@@ -4,10 +4,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::cell::{LazyCell, OnceCell};
+
 use graphql_client::GraphQLQuery;
-use lazy_init::LazyTransform;
 use log::{error, warn};
-use once_cell::sync::OnceCell;
 
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
@@ -21,7 +21,10 @@ struct ConnInfo {
 }
 
 pub struct GithubQuery {
-    client: LazyTransform<ConnInfo, client::GithubResult<client::Github>>,
+    client: LazyCell<
+        client::GithubResult<client::Github>,
+        Box<dyn Fn() -> client::GithubResult<client::Github>>,
+    >,
     init_error_cell: OnceCell<()>,
 }
 
@@ -138,11 +141,14 @@ impl_pull_request!(
 
 impl GithubQuery {
     pub fn new(host: Option<String>, token: String) -> Self {
+        let conninfo = ConnInfo {
+            host: host.unwrap_or_else(|| "api.github.com".into()),
+            token,
+        };
         GithubQuery {
-            client: LazyTransform::new(ConnInfo {
-                host: host.unwrap_or_else(|| "api.github.com".into()),
-                token,
-            }),
+            client: LazyCell::new(Box::new(move || {
+                client::Github::new(&conninfo.host, &conninfo.token)
+            })),
             init_error_cell: OnceCell::new(),
         }
     }
@@ -291,18 +297,14 @@ impl ItemSource for GithubQuery {
         filters: &[Filter],
         existing_items: &mut ItemLookup,
     ) -> Result<Vec<TodoItem>, ItemError> {
-        let client = self
-            .client
-            .get_or_create(|info| client::Github::new(&info.host, &info.token))
-            .as_ref()
-            .map_err(|err| {
-                self.init_error_cell.get_or_init(|| {
-                    error!("failed to connect to github instance: {err:?}");
-                });
-                ItemError::ServiceError {
-                    service: "github",
-                }
-            })?;
+        let client = self.client.as_ref().map_err(|err| {
+            self.init_error_cell.get_or_init(|| {
+                error!("failed to connect to github instance: {err:?}");
+            });
+            ItemError::ServiceError {
+                service: "github",
+            }
+        })?;
 
         let results = match target {
             QueryTarget::SelfUser => Self::query_user(client, filters),
