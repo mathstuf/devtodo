@@ -42,12 +42,7 @@ enum SetupError {
     #[error("failed to parse configuration file {}", path.display())]
     ParseConfig {
         path: PathBuf,
-        source: serde_yml::Error,
-    },
-    #[error("failed to handle merge keys in configuration file {}", path.display())]
-    MergeKeys {
-        path: PathBuf,
-        source: yaml_merge_keys::MergeKeyError,
+        source: serde_saphyr::Error,
     },
     #[error("log error")]
     LogError {
@@ -98,15 +93,8 @@ impl SetupError {
         }
     }
 
-    fn parse_config(path: PathBuf, source: serde_yml::Error) -> Self {
+    fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
-            path,
-            source,
-        }
-    }
-
-    fn merge_keys(path: PathBuf, source: yaml_merge_keys::MergeKeyError) -> Self {
-        Self::MergeKeys {
             path,
             source,
         }
@@ -306,11 +294,8 @@ fn try_main() -> Result<(), SetupError> {
         };
         let contents = fs::read_to_string(&config_path)
             .map_err(|err| SetupError::read_config(config_path.clone(), err))?;
-        let doc = serde_yml::from_str(&contents)
-            .map_err(|err| SetupError::parse_config(config_path.clone(), err))?;
-        let doc = yaml_merge_keys::merge_keys_serde_yml(doc)
-            .map_err(|err| SetupError::merge_keys(config_path.clone(), err))?;
-        serde_yml::from_value(doc).map_err(|err| SetupError::parse_config(config_path, err))?
+        serde_saphyr::from_str(&contents)
+            .map_err(|err| SetupError::parse_config(config_path, err))?
     };
 
     let accounts = config
