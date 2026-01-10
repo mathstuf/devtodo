@@ -35,6 +35,7 @@ struct GithubItem {
     kind: TodoKind,
     status: TodoStatus,
     url: String,
+    labels: Vec<String>,
 }
 
 macro_rules! impl_issue_filter {
@@ -79,6 +80,14 @@ macro_rules! impl_issue {
                         TodoStatus::NeedsAction
                     },
                 };
+                let labels = issue
+                    .labels
+                    .and_then(|l| l.labels)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .flatten()
+                    .map(|l| l.name)
+                    .collect();
 
                 Self {
                     due,
@@ -87,6 +96,7 @@ macro_rules! impl_issue {
                     kind,
                     status,
                     url: issue.url,
+                    labels,
                 }
             }
         }
@@ -124,6 +134,14 @@ macro_rules! impl_pull_request {
                         TodoStatus::NeedsAction
                     },
                 };
+                let labels = pr
+                    .labels
+                    .and_then(|l| l.labels)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .flatten()
+                    .map(|l| l.name)
+                    .collect();
 
                 Self {
                     due,
@@ -132,6 +150,7 @@ macro_rules! impl_pull_request {
                     kind,
                     status,
                     url: pr.url,
+                    labels,
                 }
             }
         }
@@ -463,6 +482,7 @@ impl ItemSource for GithubQuery {
                     item.set_status(result.status);
                     item.set_summary(result.summary);
                     item.set_description(result.description);
+                    item.set_labels(result.labels);
 
                     None
                 } else {
@@ -472,7 +492,8 @@ impl ItemSource for GithubQuery {
                         .status(result.status)
                         .url(result.url.clone())
                         .summary(result.summary)
-                        .description(result.description);
+                        .description(result.description)
+                        .labels(result.labels);
 
                     if let Some(due) = result.due {
                         item.due(due);
