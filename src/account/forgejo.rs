@@ -17,7 +17,7 @@ use log::{error, warn};
 use url::Url;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
 
 /// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
@@ -39,11 +39,13 @@ struct ForgejoItem {
     milestone: Option<String>,
     /// Whether this is a draft pull request.
     draft: bool,
+    /// Issues linked via RELATED-TO with an X-RELATION parameter.
+    linked_issues: Vec<LinkedIssue>,
 }
 
 impl ForgejoItem {
     /// Construct a [`ForgejoItem`] from a raw Forgejo `Issue`, treating it as an issue or PR.
-    fn from_issue(issue: Issue, is_pull_request: bool) -> Self {
+    fn from_issue(client: &Forgejo, issue: Issue, is_pull_request: bool) -> Self {
         let kind = if is_pull_request {
             TodoKind::PullRequest
         } else {
@@ -122,6 +124,19 @@ impl ForgejoItem {
             .and_then(|pr| pr.draft)
             .unwrap_or(false);
 
+        let linked_issues = issue
+            .number
+            .zip(
+                issue
+                    .repository
+                    .as_ref()
+                    .and_then(|repo| repo.owner.as_ref().zip(repo.name.as_ref())),
+            )
+            .map(|(number, (owner, repo))| {
+                ForgejoQuery::fetch_linked_issues(client, owner, repo, number)
+            })
+            .unwrap_or_default();
+
         Self {
             due,
             summary: issue.title.unwrap_or_default(),
@@ -135,6 +150,7 @@ impl ForgejoItem {
             labels,
             milestone,
             draft,
+            linked_issues,
         }
     }
 }
@@ -202,7 +218,7 @@ impl ForgejoQuery {
             items.extend(
                 assigned_issues
                     .into_iter()
-                    .map(|i| ForgejoItem::from_issue(i, false)),
+                    .map(|i| ForgejoItem::from_issue(client, i, false)),
             );
         };
 
@@ -224,7 +240,7 @@ impl ForgejoQuery {
             items.extend(
                 created_issues
                     .into_iter()
-                    .map(|i| ForgejoItem::from_issue(i, false)),
+                    .map(|i| ForgejoItem::from_issue(client, i, false)),
             );
         };
 
@@ -249,7 +265,7 @@ impl ForgejoQuery {
             items.extend(
                 assigned_prs
                     .into_iter()
-                    .map(|i| ForgejoItem::from_issue(i, true)),
+                    .map(|i| ForgejoItem::from_issue(client, i, true)),
             );
         };
 
@@ -274,7 +290,7 @@ impl ForgejoQuery {
             items.extend(
                 created_prs
                     .into_iter()
-                    .map(|i| ForgejoItem::from_issue(i, true)),
+                    .map(|i| ForgejoItem::from_issue(client, i, true)),
             );
         };
 
@@ -341,7 +357,7 @@ impl ForgejoQuery {
                 items.extend(
                     project_issues
                         .into_iter()
-                        .map(|i| ForgejoItem::from_issue(i, false)),
+                        .map(|i| ForgejoItem::from_issue(client, i, false)),
                 );
             };
 
@@ -368,12 +384,56 @@ impl ForgejoQuery {
                 items.extend(
                     project_prs
                         .into_iter()
-                        .map(|i| ForgejoItem::from_issue(i, true)),
+                        .map(|i| ForgejoItem::from_issue(client, i, true)),
                 );
             }
         }
 
         Ok(items)
+    }
+
+    /// Fetch linked issues for a single issue.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn fetch_linked_issues(
+        client: &Forgejo,
+        owner: &str,
+        repo: &str,
+        number: i64,
+    ) -> Vec<LinkedIssue> {
+        let mut links = Vec::new();
+
+        // Issues this issue blocks.
+        if let Ok(issues) = client.issue_list_blocks(owner, repo, number).send() {
+            for issue in issues {
+                if let Some(html_url) = issue.html_url {
+                    links.push(LinkedIssue {
+                        url: html_url.into(),
+                        relation: Some(LinkedIssueRelation::Blocks),
+                    });
+                }
+            }
+        } else {
+            warn!("failed to fetch blocks for {owner}/{repo}#{number}");
+        }
+
+        // Issues this issue depends on (block this issue).
+        if let Ok(issues) = client
+            .issue_list_issue_dependencies(owner, repo, number)
+            .send()
+        {
+            for issue in issues {
+                if let Some(html_url) = issue.html_url {
+                    links.push(LinkedIssue {
+                        url: html_url.into(),
+                        relation: Some(LinkedIssueRelation::DependsOn),
+                    });
+                }
+            }
+        } else {
+            warn!("failed to fetch dependencies for {owner}/{repo}#{number}");
+        }
+
+        links
     }
 }
 
@@ -410,6 +470,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
+                    item.set_linked_issues(result.linked_issues);
 
                     None
                 } else {
@@ -422,7 +483,8 @@ impl ItemSource for ForgejoQuery {
                         .summary(result.summary)
                         .description(result.description)
                         .labels(result.labels)
-                        .draft(result.draft);
+                        .draft(result.draft)
+                        .linked_issues(result.linked_issues);
 
                     if let Some(due) = result.due {
                         item.due(due);
