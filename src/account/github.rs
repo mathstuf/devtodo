@@ -10,7 +10,7 @@ use graphql_client::GraphQLQuery as _;
 use log::{error, warn};
 
 use crate::account::prelude::*;
-use crate::todo::{Due, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
 
 /// Low-level HTTP client for the GitHub GraphQL API.
 mod client;
@@ -56,6 +56,8 @@ struct GithubItem {
     milestone: Option<String>,
     /// Whether this is a draft pull request.
     draft: bool,
+    /// Issues linked via RELATED-TO with an X-RELATION parameter.
+    linked_issues: Vec<LinkedIssue>,
 }
 
 /// Implement `add_filter` for a GraphQL issue-filter type.
@@ -129,6 +131,7 @@ macro_rules! impl_issue {
                     labels,
                     milestone,
                     draft: false,
+                    linked_issues: Vec::new(),
                 }
             }
         }
@@ -189,6 +192,19 @@ macro_rules! impl_pull_request {
                     .flatten()
                     .map(|label| label.name)
                     .collect();
+                let linked_issues = pr
+                    .closing_issues_references
+                    .and_then(|refs| refs.nodes)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .flatten()
+                    .map(|issue| {
+                        LinkedIssue {
+                            url: issue.url,
+                            relation: Some(LinkedIssueRelation::Closes),
+                        }
+                    })
+                    .collect();
 
                 Self {
                     due,
@@ -200,6 +216,7 @@ macro_rules! impl_pull_request {
                     labels,
                     milestone,
                     draft,
+                    linked_issues,
                 }
             }
         }
@@ -603,6 +620,7 @@ impl ItemSource for GithubQuery {
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
+                    item.set_linked_issues(result.linked_issues);
 
                     None
                 } else {
@@ -614,7 +632,8 @@ impl ItemSource for GithubQuery {
                         .summary(result.summary)
                         .description(result.description)
                         .labels(result.labels)
-                        .draft(result.draft);
+                        .draft(result.draft)
+                        .linked_issues(result.linked_issues);
 
                     if let Some(due) = result.due {
                         item.due(due);
