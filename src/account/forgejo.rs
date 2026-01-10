@@ -28,6 +28,7 @@ struct ForgejoItem {
     url: String,
     labels: Vec<String>,
     milestone: Option<String>,
+    draft: bool,
 }
 
 impl ForgejoItem {
@@ -97,6 +98,13 @@ impl ForgejoItem {
             .filter_map(|l| l.name)
             .collect();
 
+        // Extract draft status from pull request metadata
+        let draft = issue
+            .pull_request
+            .as_ref()
+            .and_then(|pr| pr.draft)
+            .unwrap_or(false);
+
         Self {
             due,
             summary: issue.title.unwrap_or_default(),
@@ -106,6 +114,7 @@ impl ForgejoItem {
             url: issue.html_url.map(|u| u.to_string()).unwrap_or_default(),
             labels,
             milestone,
+            draft,
         }
     }
 }
@@ -384,6 +393,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_description(result.description);
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
+                    item.set_draft(result.draft);
 
                     None
                 } else {
@@ -395,7 +405,8 @@ impl ItemSource for ForgejoQuery {
                         .url(result.url.clone())
                         .summary(result.summary)
                         .description(result.description)
-                        .labels(result.labels);
+                        .labels(result.labels)
+                        .draft(result.draft);
 
                     if let Some(due) = result.due {
                         item.due(due);
