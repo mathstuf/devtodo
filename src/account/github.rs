@@ -10,7 +10,9 @@ use graphql_client::GraphQLQuery as _;
 use log::{error, warn};
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
+use crate::todo::{
+    CiStatus, Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus,
+};
 
 /// Low-level HTTP client for the GitHub GraphQL API.
 mod client;
@@ -60,6 +62,8 @@ struct GithubItem {
     linked_issues: Vec<LinkedIssue>,
     /// Review status if this is a merge request with reviews enabled.
     review_status: Option<ReviewStatus>,
+    /// CI/CD pipeline status for the upstream item.
+    ci_status: Option<CiStatus>,
 }
 
 /// Implement `add_filter` for a GraphQL issue-filter type.
@@ -135,6 +139,7 @@ macro_rules! impl_issue {
                     draft: false,
                     linked_issues: Vec::new(),
                     review_status: None,
+                    ci_status: None,
                 }
             }
         }
@@ -219,6 +224,18 @@ macro_rules! impl_pull_request {
                         },
                     }
                 });
+                let ci_status = pr.status_check_rollup.map(|scr| {
+                    match format!("{:?}", scr.state).as_str() {
+                        "SUCCESS" => CiStatus::Success,
+                        "FAILURE" => CiStatus::Failure,
+                        "ERROR" => CiStatus::Error,
+                        "PENDING" | "EXPECTED" => CiStatus::Pending,
+                        ci_status => {
+                            warn!("unknown github status check rollup state: {:?}", ci_status);
+                            CiStatus::Pending
+                        },
+                    }
+                });
 
                 Self {
                     due,
@@ -232,6 +249,7 @@ macro_rules! impl_pull_request {
                     draft,
                     linked_issues,
                     review_status,
+                    ci_status,
                 }
             }
         }
@@ -637,6 +655,7 @@ impl ItemSource for GithubQuery {
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
                     item.set_review_status(result.review_status);
+                    item.set_ci_status(result.ci_status);
 
                     None
                 } else {
@@ -659,6 +678,9 @@ impl ItemSource for GithubQuery {
                     }
                     if let Some(review_status) = result.review_status {
                         item.review_status(review_status);
+                    }
+                    if let Some(ci_status) = result.ci_status {
+                        item.ci_status(ci_status);
                     }
 
                     Some(item.build().expect("all item fields should be provided"))
