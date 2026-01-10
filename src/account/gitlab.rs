@@ -13,7 +13,7 @@ use log::{error, warn};
 use serde::Deserialize;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
 
 /// Placeholder for a GitLab user in deserialized API responses.
 #[derive(Debug, Deserialize)]
@@ -49,6 +49,10 @@ struct GitlabIssue {
     milestone: Option<GitlabMilestone>,
     /// Labels applied to the issue.
     labels: Vec<String>,
+    /// The project the issue belongs to.
+    project_id: u64,
+    /// The project-level IID of the issue.
+    iid: u64,
 }
 
 /// A GitLab merge request as returned by the REST API.
@@ -71,6 +75,73 @@ struct GitlabMergeRequest {
     #[serde(default)]
     /// Whether the merge request is a draft.
     draft: bool,
+    /// The project the merge request belongs to.
+    project_id: u64,
+    /// The project-level IID of the merge request.
+    iid: u64,
+}
+
+/// Minimal merge request returned from linked-item endpoints.
+#[derive(Debug, Deserialize)]
+struct GitlabLinkedMr {
+    /// The URL of the linked MR.
+    web_url: String,
+}
+
+/// Minimal issue returned from linked-item endpoints.
+#[derive(Debug, Deserialize)]
+struct GitlabLinkedIssue {
+    /// The URL of the linked issue.
+    web_url: String,
+}
+
+/// Issue returned from issue link endpoints.
+#[derive(Debug, Deserialize)]
+struct GitlabIssueLinkIssue {
+    /// The internal ID of the linked issue.
+    iid: u64,
+    /// The project of the issue.
+    project_id: u64,
+    /// The URL of the issue.
+    web_url: String,
+}
+
+/// An issue link returned from the issue links endpoint.
+#[derive(Debug, Deserialize)]
+struct GitlabIssueLink {
+    /// The source of the link.
+    source_issue: GitlabIssueLinkIssue,
+    /// The target of the link.
+    target_issue: GitlabIssueLinkIssue,
+    /// The type of the link.
+    link_type: String,
+}
+
+impl GitlabIssueLink {
+    /// Determine the relation type of a GitLab issue link.
+    fn relation_type(&self, is_source: bool) -> LinkedIssueRelation {
+        match self.link_type.as_str() {
+            "blocks" => {
+                if is_source {
+                    LinkedIssueRelation::Blocks
+                } else {
+                    LinkedIssueRelation::DependsOn
+                }
+            },
+            "is_blocked_by" => {
+                if is_source {
+                    LinkedIssueRelation::DependsOn
+                } else {
+                    LinkedIssueRelation::Blocks
+                }
+            },
+            "relates_to" => LinkedIssueRelation::Referenced,
+            other => {
+                warn!("unrecognised GitLab issue link type: {other}");
+                LinkedIssueRelation::Referenced
+            },
+        }
+    }
 }
 
 /// A single item retrieved from the GitLab API, prior to conversion into a [`TodoItem`].
@@ -95,10 +166,13 @@ struct GitlabItem {
     milestone: Option<String>,
     /// Whether this is a draft merge request.
     draft: bool,
+    /// Linked issues to the item.
+    linked_issues: Vec<LinkedIssue>,
 }
 
-impl From<GitlabIssue> for GitlabItem {
-    fn from(issue: GitlabIssue) -> Self {
+impl GitlabItem {
+    /// Construct an item from an issue API object.
+    fn from_issue(client: &Gitlab, issue: GitlabIssue) -> Self {
         let start = issue.start_date.map(Due::Date);
         let due = issue
             .due_date
@@ -125,6 +199,8 @@ impl From<GitlabIssue> for GitlabItem {
             },
         };
 
+        let linked_issues = Self::fetch_issue_linked(client, &issue);
+
         Self {
             start,
             due,
@@ -136,12 +212,12 @@ impl From<GitlabIssue> for GitlabItem {
             labels: issue.labels,
             milestone,
             draft: false,
+            linked_issues,
         }
     }
-}
 
-impl From<GitlabMergeRequest> for GitlabItem {
-    fn from(mr: GitlabMergeRequest) -> Self {
+    /// Construct an item from a merge request API object.
+    fn from_merge_request(client: &Gitlab, mr: GitlabMergeRequest) -> Self {
         let due = mr
             .milestone
             .as_ref()
@@ -170,6 +246,8 @@ impl From<GitlabMergeRequest> for GitlabItem {
             },
         };
 
+        let linked_issues = Self::fetch_mr_linked(client, &mr);
+
         Self {
             start: None,
             due,
@@ -181,7 +259,179 @@ impl From<GitlabMergeRequest> for GitlabItem {
             labels: mr.labels,
             milestone,
             draft,
+            linked_issues,
         }
+    }
+
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Fetch linked items for an issue.
+    fn fetch_issue_linked(client: &Gitlab, issue: &GitlabIssue) -> Vec<LinkedIssue> {
+        let mut links = Vec::new();
+
+        // MRs closing this issue.
+        let closing_result: Result<Vec<GitlabLinkedMr>, _> = api::paged(
+            projects::issues::MergeRequestsClosing::builder()
+                .project(issue.project_id)
+                .issue(issue.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        if let Ok(items) = closing_result {
+            for item in items {
+                links.push(LinkedIssue {
+                    url: item.web_url,
+                    relation: Some(LinkedIssueRelation::ClosedBy),
+                });
+            }
+        } else {
+            warn!(
+                "failed to fetch MRs closing issue {}#{}",
+                issue.project_id, issue.iid,
+            );
+        }
+
+        // Related MRs.
+        let related_result: Result<Vec<GitlabLinkedMr>, _> = api::paged(
+            projects::issues::RelatedMergeRequests::builder()
+                .project(issue.project_id)
+                .issue(issue.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        if let Ok(items) = related_result {
+            for item in items {
+                links.push(LinkedIssue {
+                    url: item.web_url,
+                    relation: Some(LinkedIssueRelation::Referenced),
+                });
+            }
+        } else {
+            warn!(
+                "failed to fetch related MRs for issue {}#{}",
+                issue.project_id, issue.iid,
+            );
+        }
+
+        // Issue links (issue-to-issue relations).
+        let issue_links_result: Result<Vec<GitlabIssueLink>, _> = api::paged(
+            projects::issues::links::IssueLinks::builder()
+                .project(issue.project_id)
+                .issue(issue.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        let Ok(issue_links) = issue_links_result else {
+            warn!(
+                "failed to fetch issue links for issue {}#{}",
+                issue.project_id, issue.iid,
+            );
+            return links;
+        };
+        for link in issue_links {
+            let (other, relation) = if link.source_issue.iid == issue.iid
+                && link.source_issue.project_id == issue.project_id
+            {
+                // Our issue is the source.
+                let relation = link.relation_type(true);
+                (link.target_issue, relation)
+            } else {
+                // Our issue is the target.
+                let relation = link.relation_type(false);
+                (link.source_issue, relation)
+            };
+            links.push(LinkedIssue {
+                url: other.web_url,
+                relation: Some(relation),
+            });
+        }
+
+        links
+    }
+
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Fetch linked items for a merge request.
+    fn fetch_mr_linked(client: &Gitlab, mr: &GitlabMergeRequest) -> Vec<LinkedIssue> {
+        let mut links = Vec::new();
+
+        // Issues this MR closes.
+        let closed_result: Result<Vec<GitlabLinkedIssue>, _> = api::paged(
+            projects::merge_requests::IssuesClosedBy::builder()
+                .project(mr.project_id)
+                .merge_request(mr.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        if let Ok(items) = closed_result {
+            for item in items {
+                links.push(LinkedIssue {
+                    url: item.web_url,
+                    relation: Some(LinkedIssueRelation::Closes),
+                });
+            }
+        } else {
+            warn!(
+                "failed to fetch issues closed by MR {}!{}",
+                mr.project_id, mr.iid,
+            );
+        }
+
+        // MRs that block this MR (this MR depends on them).
+        let blocks_result: Result<Vec<GitlabLinkedMr>, _> = api::paged(
+            projects::merge_requests::blocks::MergeRequestBlocks::builder()
+                .project(mr.project_id)
+                .merge_request(mr.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        if let Ok(items) = blocks_result {
+            for item in items {
+                links.push(LinkedIssue {
+                    url: item.web_url,
+                    relation: Some(LinkedIssueRelation::DependsOn),
+                });
+            }
+        } else {
+            warn!(
+                "failed to fetch blocking MRs for MR {}!{}",
+                mr.project_id, mr.iid,
+            );
+        }
+
+        // MRs blocked by this MR (this MR blocks them).
+        let blockees_result: Result<Vec<GitlabLinkedMr>, _> = api::paged(
+            projects::merge_requests::blocks::MergeRequestBlockees::builder()
+                .project(mr.project_id)
+                .merge_request(mr.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client);
+        if let Ok(items) = blockees_result {
+            for item in items {
+                links.push(LinkedIssue {
+                    url: item.web_url,
+                    relation: Some(LinkedIssueRelation::Blocks),
+                });
+            }
+        } else {
+            warn!(
+                "failed to fetch blocked MRs for MR {}!{}",
+                mr.project_id, mr.iid,
+            );
+        }
+
+        links
     }
 }
 
@@ -229,7 +479,10 @@ impl GitlabQuery {
                 error!("failed to query {query_context}: {err:?}");
                 ItemError::query_error("gitlab", format!("failed to query {query_context}: {err}"))
             })?;
-        Ok(result.into_iter().map(GitlabItem::from).collect())
+        Ok(result
+            .into_iter()
+            .map(|issue| GitlabItem::from_issue(client, issue))
+            .collect())
     }
 
     /// Query GitLab merge requests for a given scope.
@@ -259,7 +512,10 @@ impl GitlabQuery {
                 error!("failed to query {query_context}: {err:?}");
                 ItemError::query_error("gitlab", format!("failed to query {query_context}: {err}"))
             })?;
-        Ok(result.into_iter().map(GitlabItem::from).collect())
+        Ok(result
+            .into_iter()
+            .map(|mr| GitlabItem::from_merge_request(client, mr))
+            .collect())
     }
 
     /// Query all issues and merge requests for the authenticated user.
@@ -343,7 +599,11 @@ impl GitlabQuery {
                         )
                     })?;
 
-                items.extend(project_issues.into_iter().map(GitlabItem::from));
+                items.extend(
+                    project_issues
+                        .into_iter()
+                        .map(|issue| GitlabItem::from_issue(client, issue)),
+                );
             };
 
             // Query project merge requests
@@ -375,7 +635,11 @@ impl GitlabQuery {
                             )
                         })?;
 
-                items.extend(project_mrs.into_iter().map(GitlabItem::from));
+                items.extend(
+                    project_mrs
+                        .into_iter()
+                        .map(|mr| GitlabItem::from_merge_request(client, mr)),
+                );
             }
         }
 
@@ -419,6 +683,7 @@ impl ItemSource for GitlabQuery {
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
+                    item.set_linked_issues(result.linked_issues);
 
                     None
                 } else {
@@ -431,7 +696,8 @@ impl ItemSource for GitlabQuery {
                         .summary(result.summary)
                         .description(result.description)
                         .labels(result.labels)
-                        .draft(result.draft);
+                        .draft(result.draft)
+                        .linked_issues(result.linked_issues);
 
                     if let Some(start) = result.start {
                         item.start(start);
