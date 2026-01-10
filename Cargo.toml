@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 default = ["github"]
 github = ["graphql_client", "reqwest", "serde_json", "url"]
+gitlab = ["dep:gitlab"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -28,3 +29,6 @@ graphql_client = { version = "0.14", optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
 serde_json = { version = "1.0", optional = true }
 url = { version = "2.5.4", optional = true }
+
+# gitlab feature
+gitlab = { version = "=0.1808.0", optional = true }

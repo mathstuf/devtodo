@@ -16,6 +16,9 @@ mod prelude;
 #[cfg(feature = "github")]
 mod github;
 
+#[cfg(feature = "gitlab")]
+mod gitlab;
+
 #[derive(Debug, Error)]
 #[error("failed to fetch items")]
 pub enum ItemError {
@@ -41,7 +44,7 @@ pub trait ItemSource {
 
 #[derive(Debug, Error)]
 pub enum AccountError {
-    #[cfg(not(any(feature = "github")))]
+    #[cfg(not(all(feature = "github", feature = "gitlab")))]
     #[error("unsupported service: {}", service)]
     UnsupportedService { service: &'static str },
     #[error("unknown service: {}", service)]
@@ -61,6 +64,20 @@ pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
         "github" => {
             Err(AccountError::UnsupportedService {
                 service: "github",
+            })
+        },
+
+        #[cfg(feature = "gitlab")]
+        "gitlab" => {
+            Ok(Box::new(gitlab::GitlabQuery::new(
+                account.hostname,
+                account.secret,
+            )))
+        },
+        #[cfg(not(feature = "gitlab"))]
+        "gitlab" => {
+            Err(AccountError::UnsupportedService {
+                service: "gitlab",
             })
         },
 
