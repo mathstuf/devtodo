@@ -27,6 +27,7 @@ struct ForgejoItem {
     status: TodoStatus,
     url: String,
     labels: Vec<String>,
+    milestone: Option<String>,
 }
 
 impl ForgejoItem {
@@ -85,6 +86,9 @@ impl ForgejoItem {
             })
             .map(Due::Date);
 
+        // Extract milestone title
+        let milestone = issue.milestone.as_ref().and_then(|m| m.title.clone());
+
         // Extract labels from issue
         let labels = issue
             .labels
@@ -101,6 +105,7 @@ impl ForgejoItem {
             status,
             url: issue.html_url.map(|u| u.to_string()).unwrap_or_default(),
             labels,
+            milestone,
         }
     }
 }
@@ -378,6 +383,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_summary(result.summary);
                     item.set_description(result.description);
                     item.set_labels(result.labels);
+                    item.set_milestone(result.milestone);
 
                     None
                 } else {
@@ -393,6 +399,9 @@ impl ItemSource for ForgejoQuery {
 
                     if let Some(due) = result.due {
                         item.due(due);
+                    }
+                    if let Some(milestone) = result.milestone {
+                        item.milestone(milestone);
                     }
 
                     let item = item.build().expect("all item fields should be provided");
