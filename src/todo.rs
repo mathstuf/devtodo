@@ -305,6 +305,9 @@ pub struct TodoItem {
     description: String,
     #[builder(default)]
     labels: Vec<String>,
+    #[builder(default)]
+    #[builder(setter(strip_option))]
+    milestone: Option<String>,
 
     #[builder(default = "Utc::now()")]
     #[builder(setter(skip))]
@@ -385,13 +388,25 @@ impl TodoItem {
         }
     }
 
+    pub fn set_milestone<M>(&mut self, new_milestone: Option<M>)
+    where
+        M: Into<String>,
+    {
+        let new_milestone = new_milestone.map(|m| m.into());
+        if self.milestone != new_milestone {
+            self.milestone = new_milestone;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     pub fn url(&self) -> &str {
         &self.url
     }
 
     fn from_component(component: Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
-        let (kind, labels) = {
+        let (kind, labels, milestone) = {
             let categories_value = component.get_only("CATEGORIES")?.value_as_string();
             let categories = categories_value.split(',').collect::<Vec<_>>();
             let kind = *ALL_TODO_KINDS
@@ -402,7 +417,11 @@ impl TodoItem {
                 .filter_map(|cat| cat.strip_prefix("label-"))
                 .map(String::from)
                 .collect();
-            (kind, labels)
+            let milestone = categories
+                .iter()
+                .find_map(|cat| cat.strip_prefix("milestone-"))
+                .map(String::from);
+            (kind, labels, milestone)
         };
         let created = {
             let dtstamp = component.get_only("DTSTAMP")?.value_as_string();
@@ -453,6 +472,7 @@ impl TodoItem {
             summary,
             description,
             labels,
+            milestone,
             last_modified,
             updated,
         })
@@ -497,18 +517,20 @@ impl TodoItem {
         ));
 
         // Build the CATEGORIES value:
-        // - Keep any existing categories that aren't kind or label categories
+        // - Keep any existing categories that aren't kind, label, or milestone categories
         // - Add the current kind category
         // - Add label- prefixed categories for each label
+        // - Add milestone- prefixed category if present
         let existing_categories: Vec<String> = component
             .get_only("CATEGORIES")
             .map(|prop| {
                 prop.value_as_string()
                     .split(',')
                     .filter(|&cat| {
-                        // Filter out kind categories and label- categories
+                        // Filter out kind categories, label- categories, and milestone- categories
                         !ALL_TODO_KINDS.iter().any(|k| cat == k.category())
                             && !cat.starts_with("label-")
+                            && !cat.starts_with("milestone-")
                     })
                     .map(String::from)
                     .collect()
@@ -516,11 +538,13 @@ impl TodoItem {
             .unwrap_or_default();
 
         let label_categories = self.labels.iter().map(|l| format!("label-{l}"));
+        let milestone_category = self.milestone.iter().map(|m| format!("milestone-{m}"));
 
         let new_categories = existing_categories
             .into_iter()
             .chain(iter::once(self.kind.category().to_string()))
             .chain(label_categories)
+            .chain(milestone_category)
             .format(",");
 
         component.set(Property::new("CATEGORIES", format!("{new_categories}")));
