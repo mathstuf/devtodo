@@ -97,6 +97,10 @@ impl_issue!(
     queries::viewer_issues::IssueInfo,
     queries::viewer_issues::IssueState
 );
+impl_issue!(
+    queries::repository_issues::IssueInfo,
+    queries::repository_issues::IssueState
+);
 
 macro_rules! impl_pull_request {
     ($type:path, $state:path) => {
@@ -137,6 +141,10 @@ macro_rules! impl_pull_request {
 impl_pull_request!(
     queries::viewer_pull_requests::PullRequestInfo,
     queries::viewer_pull_requests::PullRequestState
+);
+impl_pull_request!(
+    queries::repository_pull_requests::PullRequestInfo,
+    queries::repository_pull_requests::PullRequestState
 );
 
 impl GithubQuery {
@@ -286,7 +294,141 @@ impl GithubQuery {
         projects: &[String],
         filters: &[Filter],
     ) -> Result<Vec<GithubItem>, ItemError> {
-        unimplemented!()
+        let mut items = Vec::new();
+
+        // Collect labels from filters
+        let labels: Option<Vec<String>> = {
+            let label_list: Vec<String> = filters
+                .iter()
+                .map(|Filter::Label(label)| label.clone())
+                .collect();
+            if label_list.is_empty() {
+                None
+            } else {
+                Some(label_list)
+            }
+        };
+
+        for project in projects {
+            // Parse "owner/repo" format
+            let (owner, name) = match project.split_once('/') {
+                Some((o, n)) => (o.to_string(), n.to_string()),
+                None => {
+                    error!("invalid project format (expected owner/repo): {project}");
+                    return Err(ItemError::QueryError {
+                        service: "github",
+                        message: format!("invalid project format (expected owner/repo): {project}"),
+                    });
+                },
+            };
+
+            // Query for repository issues
+            let mut input = queries::repository_issues::Variables {
+                owner: owner.clone(),
+                name: name.clone(),
+                labels: labels.clone(),
+                states: Some(vec![queries::repository_issues::IssueState::OPEN]),
+                cursor: None,
+            };
+
+            loop {
+                let query = queries::RepositoryIssues::build_query(input.clone());
+                let rsp = client
+                    .send::<queries::RepositoryIssues>(&query)
+                    .map_err(|err| {
+                        error!("failed to send repository issue query for {project}: {err:?}");
+                        let message =
+                            format!("failed to send repository issue query for {project}: {err}");
+                        ItemError::QueryError {
+                            service: "github",
+                            message,
+                        }
+                    })?;
+
+                Self::check_rate_limits(
+                    &rsp.rate_limit_info.rate_limit,
+                    queries::RepositoryIssues::name(),
+                );
+
+                if let Some(repo) = rsp.repository {
+                    let (issues, page_info) = (repo.issues.items, repo.issues.page_info);
+                    if let Some(issues) = issues {
+                        items.extend(issues.into_iter().flatten().map(GithubItem::from));
+                    }
+
+                    if page_info.has_next_page {
+                        assert!(
+                            page_info.end_cursor.is_some(),
+                            "GitHub lied to us and said there is another page, but didn't give \
+                             us an end cursor. Bailing to avoid an infinite loop.",
+                        );
+                        input.cursor = page_info.end_cursor;
+                    } else {
+                        break;
+                    }
+                } else {
+                    warn!("repository {project} not found or not accessible");
+                    break;
+                }
+            }
+
+            // Query for repository pull requests
+            let mut input = queries::repository_pull_requests::Variables {
+                owner: owner.clone(),
+                name: name.clone(),
+                labels: labels.clone(),
+                states: Some(vec![
+                    queries::repository_pull_requests::PullRequestState::OPEN,
+                ]),
+                cursor: None,
+            };
+
+            loop {
+                let query = queries::RepositoryPullRequests::build_query(input.clone());
+                let rsp = client
+                    .send::<queries::RepositoryPullRequests>(&query)
+                    .map_err(|err| {
+                        error!(
+                            "failed to send repository pull request query for {project}: {err:?}",
+                        );
+                        let message = format!(
+                            "failed to send repository pull request query for {project}: {err}",
+                        );
+                        ItemError::QueryError {
+                            service: "github",
+                            message,
+                        }
+                    })?;
+
+                Self::check_rate_limits(
+                    &rsp.rate_limit_info.rate_limit,
+                    queries::RepositoryPullRequests::name(),
+                );
+
+                if let Some(repo) = rsp.repository {
+                    let (prs, page_info) = (repo.pull_requests.items, repo.pull_requests.page_info);
+                    if let Some(prs) = prs {
+                        items.extend(prs.into_iter().flatten().map(GithubItem::from));
+                    }
+
+                    if page_info.has_next_page {
+                        assert!(
+                            page_info.end_cursor.is_some(),
+                            "GitHub lied to us and said there is another page, but didn't give \
+                             us an end cursor. Bailing to avoid an infinite loop.",
+                        );
+                        input.cursor = page_info.end_cursor;
+                    } else {
+                        break;
+                    }
+                } else {
+                    // Already warned above for issues query
+                    break;
+                }
+            }
+        }
+
+        Ok(items)
     }
 }
 
