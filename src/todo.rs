@@ -308,6 +308,8 @@ pub struct TodoItem {
     #[builder(default)]
     #[builder(setter(strip_option))]
     milestone: Option<String>,
+    #[builder(default)]
+    draft: bool,
 
     #[builder(default = "Utc::now()")]
     #[builder(setter(skip))]
@@ -400,6 +402,14 @@ impl TodoItem {
         }
     }
 
+    pub fn set_draft(&mut self, new_draft: bool) {
+        if self.draft != new_draft {
+            self.draft = new_draft;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     pub fn url(&self) -> &str {
         &self.url
     }
@@ -460,6 +470,10 @@ impl TodoItem {
             // Missing a time? Set it to now; we'll write it back later.
             (Utc::now(), true)
         };
+        let draft = component
+            .get_only("X-DRAFT")
+            .map(|p| p.value_as_string() == "TRUE")
+            .unwrap_or(false);
 
         Some(TodoItem {
             uid,
@@ -473,6 +487,7 @@ impl TodoItem {
             description,
             labels,
             milestone,
+            draft,
             last_modified,
             updated,
         })
@@ -548,5 +563,12 @@ impl TodoItem {
             .format(",");
 
         component.set(Property::new("CATEGORIES", format!("{new_categories}")));
+
+        // Write X-DRAFT property (only if true to avoid clutter)
+        if self.draft {
+            component.set(Property::new("X-DRAFT", "TRUE"));
+        } else {
+            component.remove("X-DRAFT");
+        }
     }
 }
