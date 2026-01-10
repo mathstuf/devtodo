@@ -37,6 +37,7 @@ struct GithubItem {
     url: String,
     labels: Vec<String>,
     milestone: Option<String>,
+    draft: bool,
 }
 
 macro_rules! impl_issue_filter {
@@ -104,6 +105,7 @@ macro_rules! impl_issue {
                     url: issue.url,
                     labels,
                     milestone,
+                    draft: false,
                 }
             }
         }
@@ -129,6 +131,7 @@ macro_rules! impl_pull_request {
                     .and_then(|m| m.due_on)
                     .map(Due::DateTime);
                 let milestone = pr.milestone.as_ref().map(|m| m.title.clone());
+                let draft = pr.is_draft;
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::PullRequest;
                 let status = match pr.state {
@@ -164,6 +167,7 @@ macro_rules! impl_pull_request {
                     url: pr.url,
                     labels,
                     milestone,
+                    draft,
                 }
             }
         }
@@ -497,6 +501,7 @@ impl ItemSource for GithubQuery {
                     item.set_description(result.description);
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
+                    item.set_draft(result.draft);
 
                     None
                 } else {
@@ -507,7 +512,8 @@ impl ItemSource for GithubQuery {
                         .url(result.url.clone())
                         .summary(result.summary)
                         .description(result.description)
-                        .labels(result.labels);
+                        .labels(result.labels)
+                        .draft(result.draft);
 
                     if let Some(due) = result.due {
                         item.due(due);

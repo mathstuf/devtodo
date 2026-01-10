@@ -74,6 +74,7 @@ fragment PullRequestInfo on PullRequest {
     closed
     closedAt
     createdAt
+    isDraft
     lastEditedAt
     milestone {
         title
