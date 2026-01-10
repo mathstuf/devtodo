@@ -19,6 +19,9 @@ mod github;
 #[cfg(feature = "gitlab")]
 mod gitlab;
 
+#[cfg(feature = "forgejo")]
+mod forgejo;
+
 #[derive(Debug, Error)]
 #[error("failed to fetch items")]
 pub enum ItemError {
@@ -44,7 +47,7 @@ pub trait ItemSource {
 
 #[derive(Debug, Error)]
 pub enum AccountError {
-    #[cfg(not(all(feature = "github", feature = "gitlab")))]
+    #[cfg(not(all(feature = "github", feature = "gitlab", feature = "forgejo")))]
     #[error("unsupported service: {}", service)]
     UnsupportedService { service: &'static str },
     #[error("unknown service: {}", service)]
@@ -78,6 +81,20 @@ pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
         "gitlab" => {
             Err(AccountError::UnsupportedService {
                 service: "gitlab",
+            })
+        },
+
+        #[cfg(feature = "forgejo")]
+        "forgejo" => {
+            Ok(Box::new(forgejo::ForgejoQuery::new(
+                account.hostname,
+                account.secret,
+            )))
+        },
+        #[cfg(not(feature = "forgejo"))]
+        "forgejo" => {
+            Err(AccountError::UnsupportedService {
+                service: "forgejo",
             })
         },
 
