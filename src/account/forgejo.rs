@@ -26,6 +26,7 @@ struct ForgejoItem {
     kind: TodoKind,
     status: TodoStatus,
     url: String,
+    labels: Vec<String>,
 }
 
 impl ForgejoItem {
@@ -84,6 +85,14 @@ impl ForgejoItem {
             })
             .map(Due::Date);
 
+        // Extract labels from issue
+        let labels = issue
+            .labels
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|l| l.name)
+            .collect();
+
         Self {
             due,
             summary: issue.title.unwrap_or_default(),
@@ -91,6 +100,7 @@ impl ForgejoItem {
             kind,
             status,
             url: issue.html_url.map(|u| u.to_string()).unwrap_or_default(),
+            labels,
         }
     }
 }
@@ -367,6 +377,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_status(result.status);
                     item.set_summary(result.summary);
                     item.set_description(result.description);
+                    item.set_labels(result.labels);
 
                     None
                 } else {
@@ -377,7 +388,8 @@ impl ItemSource for ForgejoQuery {
                         .status(result.status)
                         .url(result.url.clone())
                         .summary(result.summary)
-                        .description(result.description);
+                        .description(result.description)
+                        .labels(result.labels);
 
                     if let Some(due) = result.due {
                         item.due(due);
