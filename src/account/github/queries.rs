@@ -38,8 +38,8 @@ macro_rules! gql_query {
     };
 }
 
-gql_query!(ViewerIssues, "User");
-gql_query!(ViewerPullRequests, "Issue");
+gql_query!(ViewerIssues, "ViewerIssues");
+gql_query!(ViewerPullRequests, "ViewerPullRequests");
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RateLimitInfo {
