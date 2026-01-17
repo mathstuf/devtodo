@@ -131,3 +131,33 @@ query ViewerPullRequests($labels: [String!], $cursor: String) {
     }
     ...RateLimitInfo
 }
+
+query RepositoryIssues($owner: String!, $name: String!, $labels: [String!], $states: [IssueState!], $cursor: String) {
+    repository(owner: $owner, name: $name) {
+        issues(labels: $labels, states: $states, first: 100, after: $cursor) {
+            items: nodes {
+                ...IssueInfo
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+            }
+        }
+    }
+    ...RateLimitInfo
+}
+
+query RepositoryPullRequests($owner: String!, $name: String!, $labels: [String!], $states: [PullRequestState!], $cursor: String) {
+    repository(owner: $owner, name: $name) {
+        pullRequests(labels: $labels, states: $states, first: 100, after: $cursor) {
+            items: nodes {
+                ...PullRequestInfo
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+            }
+        }
+    }
+    ...RateLimitInfo
+}

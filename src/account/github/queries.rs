@@ -40,6 +40,8 @@ macro_rules! gql_query {
 
 gql_query!(ViewerIssues, "ViewerIssues");
 gql_query!(ViewerPullRequests, "ViewerPullRequests");
+gql_query!(RepositoryIssues, "RepositoryIssues");
+gql_query!(RepositoryPullRequests, "RepositoryPullRequests");
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RateLimitInfo {
@@ -112,3 +114,5 @@ macro_rules! impl_into_rate_limit_info {
 
 impl_into_rate_limit_info!(viewer_issues::RateLimitInfoRateLimit);
 impl_into_rate_limit_info!(viewer_pull_requests::RateLimitInfoRateLimit);
+impl_into_rate_limit_info!(repository_issues::RateLimitInfoRateLimit);
+impl_into_rate_limit_info!(repository_pull_requests::RateLimitInfoRateLimit);
