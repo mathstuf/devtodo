@@ -256,7 +256,7 @@ impl GithubQuery {
 
             Self::check_rate_limits(
                 &rsp.rate_limit_info.rate_limit,
-                queries::ViewerIssues::name(),
+                queries::ViewerPullRequests::name(),
             );
             let (prs, page_info) = (
                 rsp.viewer.pull_requests.items,
