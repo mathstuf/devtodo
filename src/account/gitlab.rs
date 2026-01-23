@@ -30,6 +30,7 @@ struct GitlabIssue {
     state: String,
     web_url: String,
     assignees: Vec<GitlabUser>,
+    start_date: Option<NaiveDate>,
     due_date: Option<NaiveDate>,
     milestone: Option<GitlabMilestone>,
 }
@@ -45,6 +46,7 @@ struct GitlabMergeRequest {
 }
 
 struct GitlabItem {
+    start: Option<Due>,
     due: Option<Due>,
     summary: String,
     description: String,
@@ -55,6 +57,7 @@ struct GitlabItem {
 
 impl From<GitlabIssue> for GitlabItem {
     fn from(issue: GitlabIssue) -> Self {
+        let start = issue.start_date.map(Due::Date);
         let due = issue
             .due_date
             .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
@@ -76,6 +79,7 @@ impl From<GitlabIssue> for GitlabItem {
         };
 
         Self {
+            start,
             due,
             summary: issue.title,
             description: issue.description.unwrap_or_default(),
@@ -107,6 +111,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
         };
 
         Self {
+            start: None,
             due,
             summary: mr.title,
             description: mr.description.unwrap_or_default(),
@@ -353,6 +358,9 @@ impl ItemSource for GitlabQuery {
             .filter_map(|result| {
                 if let Some(item) = existing_items.get_mut(&result.url) {
                     // Update existing item
+                    if let Some(start) = result.start {
+                        item.set_start(start);
+                    }
                     if let Some(due) = result.due {
                         item.set_due(due);
                     }
@@ -371,6 +379,9 @@ impl ItemSource for GitlabQuery {
                         .summary(result.summary)
                         .description(result.description);
 
+                    if let Some(start) = result.start {
+                        item.start(start);
+                    }
                     if let Some(due) = result.due {
                         item.due(due);
                     }

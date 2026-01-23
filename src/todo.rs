@@ -295,6 +295,9 @@ pub struct TodoItem {
     #[builder(default)]
     #[builder(setter(strip_option))]
     due: Option<Due>,
+    #[builder(default)]
+    #[builder(setter(strip_option))]
+    start: Option<Due>,
     status: TodoStatus,
     url: String,
     summary: String,
@@ -313,6 +316,19 @@ pub struct TodoItem {
 impl TodoItem {
     pub fn builder() -> TodoItemBuilder {
         TodoItemBuilder::default()
+    }
+
+    pub fn set_start(&mut self, new_start: Due) {
+        if self
+            .start
+            .as_ref()
+            .map(|&start| start != new_start)
+            .unwrap_or(true)
+        {
+            self.start = Some(new_start);
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
     }
 
     pub fn set_due(&mut self, new_due: Due) {
@@ -377,6 +393,11 @@ impl TodoItem {
 
             Utc.from_utc_datetime(&dt)
         };
+        let start = if let Some(start) = component.get_only("DTSTART") {
+            Some(Due::from_str(&start.value_as_string())?)
+        } else {
+            None
+        };
         let due = if let Some(due) = component.get_only("DUE") {
             Some(Due::from_str(&due.value_as_string())?)
         } else {
@@ -409,6 +430,7 @@ impl TodoItem {
             kind,
             created,
             due,
+            start,
             status,
             url,
             summary,
@@ -444,6 +466,9 @@ impl TodoItem {
         component.set(Property::new("SUMMARY", &self.summary));
         component.set(Property::new("DESCRIPTION", &self.description));
         component.set(Property::new("URL", &self.url));
+        if let Some(start) = self.start {
+            component.set(Property::new("DTSTART", format!("{start}")));
+        }
         if let Some(due) = self.due {
             component.set(Property::new("DUE", format!("{due}")));
         }
