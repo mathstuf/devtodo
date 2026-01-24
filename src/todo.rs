@@ -203,6 +203,7 @@ pub enum TodoKind {
     AssignedIssue,
     PullRequest,
     AssignedPullRequest,
+    ReviewRequested,
     Todo,
 }
 
@@ -211,6 +212,7 @@ static ALL_TODO_KINDS: &[TodoKind] = &[
     TodoKind::AssignedIssue,
     TodoKind::PullRequest,
     TodoKind::AssignedPullRequest,
+    TodoKind::ReviewRequested,
     TodoKind::Todo,
 ];
 
@@ -221,6 +223,7 @@ impl TodoKind {
             Self::AssignedIssue => "assigned-issue",
             Self::PullRequest => "pull-request",
             Self::AssignedPullRequest => "assigned-pull-request",
+            Self::ReviewRequested => "review-requested",
             Self::Todo => "todo",
         }
     }
