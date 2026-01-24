@@ -62,6 +62,7 @@ impl From<GitlabIssue> for GitlabItem {
             .due_date
             .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
             .map(Due::Date);
+        // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::Issue;
         let status = match issue.state.as_str() {
             "closed" => TodoStatus::Completed,
@@ -93,6 +94,7 @@ impl From<GitlabIssue> for GitlabItem {
 impl From<GitlabMergeRequest> for GitlabItem {
     fn from(mr: GitlabMergeRequest) -> Self {
         let due = mr.milestone.and_then(|m| m.due_date).map(Due::Date);
+        // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::PullRequest;
         let status = match mr.state.as_str() {
             "closed" => TodoStatus::Cancelled,
