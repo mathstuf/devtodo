@@ -7,6 +7,8 @@ clippy_task:
         - env:
               RUST_FEATURES: "--features gitlab"
         - env:
+              RUST_FEATURES: "--features forgejo"
+        - env:
               RUST_FEATURES: "--all-features"
     container:
         image: rust:latest
