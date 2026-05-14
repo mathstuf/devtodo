@@ -17,7 +17,7 @@ clippy_task:
     cargo_cache:
         folder: $CARGO_HOME/registry
         fingerprint_script: cat Cargo.lock
-    fmt_script: cargo clippy $RUST_FEATURES
+    clippy_script: cargo clippy $RUST_FEATURES
 
 rustfmt_task:
     container:
