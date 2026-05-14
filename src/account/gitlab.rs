@@ -46,6 +46,8 @@ struct GitlabMergeRequest {
     assignees: Vec<GitlabUser>,
     milestone: Option<GitlabMilestone>,
     labels: Vec<String>,
+    #[serde(default)]
+    draft: bool,
 }
 
 struct GitlabItem {
@@ -58,6 +60,7 @@ struct GitlabItem {
     url: String,
     labels: Vec<String>,
     milestone: Option<String>,
+    draft: bool,
 }
 
 impl From<GitlabIssue> for GitlabItem {
@@ -94,6 +97,7 @@ impl From<GitlabIssue> for GitlabItem {
             url: issue.web_url,
             labels: issue.labels,
             milestone,
+            draft: false,
         }
     }
 }
@@ -106,6 +110,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
             .and_then(|m| m.due_date)
             .map(Due::Date);
         let milestone = mr.milestone.as_ref().map(|m| m.title.clone());
+        let draft = mr.draft;
         let kind = TodoKind::PullRequest;
         let status = match mr.state.as_str() {
             "closed" => TodoStatus::Cancelled,
@@ -133,6 +138,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
             url: mr.web_url,
             labels: mr.labels,
             milestone,
+            draft,
         }
     }
 }
@@ -384,6 +390,7 @@ impl ItemSource for GitlabQuery {
                     item.set_description(result.description);
                     item.set_labels(result.labels);
                     item.set_milestone(result.milestone);
+                    item.set_draft(result.draft);
 
                     None
                 } else {
@@ -395,7 +402,8 @@ impl ItemSource for GitlabQuery {
                         .url(result.url.clone())
                         .summary(result.summary)
                         .description(result.description)
-                        .labels(result.labels);
+                        .labels(result.labels)
+                        .draft(result.draft);
 
                     if let Some(start) = result.start {
                         item.start(start);
