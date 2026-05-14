@@ -303,6 +303,8 @@ pub struct TodoItem {
     summary: String,
     #[builder(default)]
     description: String,
+    #[builder(default)]
+    labels: Vec<String>,
 
     #[builder(default = "Utc::now()")]
     #[builder(setter(skip))]
@@ -375,18 +377,32 @@ impl TodoItem {
         }
     }
 
+    pub fn set_labels(&mut self, new_labels: Vec<String>) {
+        if self.labels != new_labels {
+            self.labels = new_labels;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     pub fn url(&self) -> &str {
         &self.url
     }
 
     fn from_component(component: Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
-        let kind = {
+        let (kind, labels) = {
             let categories_value = component.get_only("CATEGORIES")?.value_as_string();
             let categories = categories_value.split(',').collect::<Vec<_>>();
-            *ALL_TODO_KINDS
+            let kind = *ALL_TODO_KINDS
                 .iter()
-                .find(|kind| categories.contains(&kind.category()))?
+                .find(|kind| categories.contains(&kind.category()))?;
+            let labels = categories
+                .iter()
+                .filter_map(|cat| cat.strip_prefix("label-"))
+                .map(String::from)
+                .collect();
+            (kind, labels)
         };
         let created = {
             let dtstamp = component.get_only("DTSTAMP")?.value_as_string();
@@ -436,6 +452,7 @@ impl TodoItem {
             url,
             summary,
             description,
+            labels,
             last_modified,
             updated,
         })
@@ -479,36 +496,33 @@ impl TodoItem {
             format!("{}", self.last_modified.format(DATE_TIME_FMT)),
         ));
 
-        if let Some(prop) = component.get_only("CATEGORIES") {
-            let value = prop.value_as_string();
-            let categories = value.split(',');
-            let all_categories = categories.clone();
-
-            // See if we have any of the categories set.
-            let kind_categories = categories
-                .filter(|&category| {
-                    ALL_TODO_KINDS
-                        .iter()
-                        .any(|kind| category == kind.category())
-                })
-                .collect::<Vec<_>>();
-
-            // Check if we have the right category already set.
-            if kind_categories.len() == 1 && kind_categories[0] == self.kind.category() {
-                // OK
-            } else {
-                let new_categories = all_categories
-                    .filter(|&category| {
-                        ALL_TODO_KINDS
-                            .iter()
-                            .all(|kind| category != kind.category())
+        // Build the CATEGORIES value:
+        // - Keep any existing categories that aren't kind or label categories
+        // - Add the current kind category
+        // - Add label- prefixed categories for each label
+        let existing_categories: Vec<String> = component
+            .get_only("CATEGORIES")
+            .map(|prop| {
+                prop.value_as_string()
+                    .split(',')
+                    .filter(|&cat| {
+                        // Filter out kind categories and label- categories
+                        !ALL_TODO_KINDS.iter().any(|k| cat == k.category())
+                            && !cat.starts_with("label-")
                     })
-                    .chain(iter::once(self.kind.category()))
-                    .format(",");
-                component.set(Property::new("CATEGORIES", format!("{new_categories}")));
-            }
-        } else {
-            component.set(Property::new("CATEGORIES", self.kind));
-        };
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let label_categories = self.labels.iter().map(|l| format!("label-{l}"));
+
+        let new_categories = existing_categories
+            .into_iter()
+            .chain(iter::once(self.kind.category().to_string()))
+            .chain(label_categories)
+            .format(",");
+
+        component.set(Property::new("CATEGORIES", format!("{new_categories}")));
     }
 }

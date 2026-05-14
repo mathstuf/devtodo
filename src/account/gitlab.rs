@@ -33,6 +33,7 @@ struct GitlabIssue {
     start_date: Option<NaiveDate>,
     due_date: Option<NaiveDate>,
     milestone: Option<GitlabMilestone>,
+    labels: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +44,7 @@ struct GitlabMergeRequest {
     web_url: String,
     assignees: Vec<GitlabUser>,
     milestone: Option<GitlabMilestone>,
+    labels: Vec<String>,
 }
 
 struct GitlabItem {
@@ -53,6 +55,7 @@ struct GitlabItem {
     kind: TodoKind,
     status: TodoStatus,
     url: String,
+    labels: Vec<String>,
 }
 
 impl From<GitlabIssue> for GitlabItem {
@@ -86,6 +89,7 @@ impl From<GitlabIssue> for GitlabItem {
             kind,
             status,
             url: issue.web_url,
+            labels: issue.labels,
         }
     }
 }
@@ -118,6 +122,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
             kind,
             status,
             url: mr.web_url,
+            labels: mr.labels,
         }
     }
 }
@@ -367,6 +372,7 @@ impl ItemSource for GitlabQuery {
                     item.set_status(result.status);
                     item.set_summary(result.summary);
                     item.set_description(result.description);
+                    item.set_labels(result.labels);
 
                     None
                 } else {
@@ -377,7 +383,8 @@ impl ItemSource for GitlabQuery {
                         .status(result.status)
                         .url(result.url.clone())
                         .summary(result.summary)
-                        .description(result.description);
+                        .description(result.description)
+                        .labels(result.labels);
 
                     if let Some(start) = result.start {
                         item.start(start);
