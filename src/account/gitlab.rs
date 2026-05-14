@@ -71,6 +71,7 @@ impl From<GitlabIssue> for GitlabItem {
             .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
             .map(Due::Date);
         let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
+        // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::Issue;
         let status = match issue.state.as_str() {
             "closed" => TodoStatus::Completed,
@@ -111,6 +112,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
             .map(Due::Date);
         let milestone = mr.milestone.as_ref().map(|m| m.title.clone());
         let draft = mr.draft;
+        // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::PullRequest;
         let status = match mr.state.as_str() {
             "closed" => TodoStatus::Cancelled,
@@ -251,7 +253,7 @@ impl GitlabQuery {
             let endpoint = merge_requests::MergeRequests::builder()
                 .scope(merge_requests::MergeRequestScope::CreatedByMe)
                 .state(merge_requests::MergeRequestState::Opened)
-                .labels(labels)
+                .labels(labels.clone())
                 .build()
                 .map_err(|err| {
                     ItemError::QueryError {
@@ -271,6 +273,33 @@ impl GitlabQuery {
                 })?;
 
             items.extend(created_mrs.into_iter().map(GitlabItem::from));
+        }
+
+        // Query merge requests where the API user is a reviewer.
+        {
+            let endpoint = merge_requests::MergeRequests::builder()
+                .scope(merge_requests::MergeRequestScope::ReviewsForMe)
+                .labels(labels)
+                .state(merge_requests::MergeRequestState::Opened)
+                .build()
+                .map_err(|err| {
+                    ItemError::QueryError {
+                        service: "gitlab",
+                        message: format!("failed to build reviewer merge requests query: {err}"),
+                    }
+                })?;
+
+            let reviewer_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
+                .query(client)
+                .map_err(|err| {
+                    error!("failed to query merge requests for review: {err:?}");
+                    ItemError::QueryError {
+                        service: "gitlab",
+                        message: format!("failed to query merge requests for review: {err}"),
+                    }
+                })?;
+
+            items.extend(reviewer_mrs.into_iter().map(GitlabItem::from));
         }
 
         Ok(items)
