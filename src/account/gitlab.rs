@@ -20,6 +20,7 @@ struct GitlabUser {}
 
 #[derive(Debug, Deserialize)]
 struct GitlabMilestone {
+    title: String,
     due_date: Option<NaiveDate>,
 }
 
@@ -56,6 +57,7 @@ struct GitlabItem {
     status: TodoStatus,
     url: String,
     labels: Vec<String>,
+    milestone: Option<String>,
 }
 
 impl From<GitlabIssue> for GitlabItem {
@@ -65,6 +67,7 @@ impl From<GitlabIssue> for GitlabItem {
             .due_date
             .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
             .map(Due::Date);
+        let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
         let kind = TodoKind::Issue;
         let status = match issue.state.as_str() {
             "closed" => TodoStatus::Completed,
@@ -90,13 +93,19 @@ impl From<GitlabIssue> for GitlabItem {
             status,
             url: issue.web_url,
             labels: issue.labels,
+            milestone,
         }
     }
 }
 
 impl From<GitlabMergeRequest> for GitlabItem {
     fn from(mr: GitlabMergeRequest) -> Self {
-        let due = mr.milestone.and_then(|m| m.due_date).map(Due::Date);
+        let due = mr
+            .milestone
+            .as_ref()
+            .and_then(|m| m.due_date)
+            .map(Due::Date);
+        let milestone = mr.milestone.as_ref().map(|m| m.title.clone());
         let kind = TodoKind::PullRequest;
         let status = match mr.state.as_str() {
             "closed" => TodoStatus::Cancelled,
@@ -123,6 +132,7 @@ impl From<GitlabMergeRequest> for GitlabItem {
             status,
             url: mr.web_url,
             labels: mr.labels,
+            milestone,
         }
     }
 }
@@ -373,6 +383,7 @@ impl ItemSource for GitlabQuery {
                     item.set_summary(result.summary);
                     item.set_description(result.description);
                     item.set_labels(result.labels);
+                    item.set_milestone(result.milestone);
 
                     None
                 } else {
@@ -391,6 +402,9 @@ impl ItemSource for GitlabQuery {
                     }
                     if let Some(due) = result.due {
                         item.due(due);
+                    }
+                    if let Some(milestone) = result.milestone {
+                        item.milestone(milestone);
                     }
 
                     let item = item.build().expect("all item fields should be provided");

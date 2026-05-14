@@ -45,6 +45,7 @@ fragment IssueInfo on Issue {
     createdAt
     lastEditedAt
     milestone {
+        title
         dueOn
         updatedAt
     }
@@ -75,6 +76,7 @@ fragment PullRequestInfo on PullRequest {
     createdAt
     lastEditedAt
     milestone {
+        title
         dueOn
         updatedAt
     }

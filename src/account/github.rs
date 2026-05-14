@@ -36,6 +36,7 @@ struct GithubItem {
     status: TodoStatus,
     url: String,
     labels: Vec<String>,
+    milestone: Option<String>,
 }
 
 macro_rules! impl_issue_filter {
@@ -58,7 +59,12 @@ macro_rules! impl_issue {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
             fn from(issue: $type) -> Self {
-                let due = issue.milestone.and_then(|m| m.due_on).map(Due::DateTime);
+                let due = issue
+                    .milestone
+                    .as_ref()
+                    .and_then(|m| m.due_on)
+                    .map(Due::DateTime);
+                let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::Issue;
                 let status = match issue.state {
@@ -97,6 +103,7 @@ macro_rules! impl_issue {
                     status,
                     url: issue.url,
                     labels,
+                    milestone,
                 }
             }
         }
@@ -116,7 +123,12 @@ macro_rules! impl_pull_request {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
             fn from(pr: $type) -> Self {
-                let due = pr.milestone.and_then(|m| m.due_on).map(Due::DateTime);
+                let due = pr
+                    .milestone
+                    .as_ref()
+                    .and_then(|m| m.due_on)
+                    .map(Due::DateTime);
+                let milestone = pr.milestone.as_ref().map(|m| m.title.clone());
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::PullRequest;
                 let status = match pr.state {
@@ -151,6 +163,7 @@ macro_rules! impl_pull_request {
                     status,
                     url: pr.url,
                     labels,
+                    milestone,
                 }
             }
         }
@@ -483,6 +496,7 @@ impl ItemSource for GithubQuery {
                     item.set_summary(result.summary);
                     item.set_description(result.description);
                     item.set_labels(result.labels);
+                    item.set_milestone(result.milestone);
 
                     None
                 } else {
@@ -497,6 +511,9 @@ impl ItemSource for GithubQuery {
 
                     if let Some(due) = result.due {
                         item.due(due);
+                    }
+                    if let Some(milestone) = result.milestone {
+                        item.milestone(milestone);
                     }
 
                     let item = item.build().expect("all item fields should be provided");
