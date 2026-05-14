@@ -318,6 +318,7 @@ impl TodoItem {
         TodoItemBuilder::default()
     }
 
+    #[cfg(feature = "gitlab")]
     pub fn set_start(&mut self, new_start: Due) {
         if self
             .start
