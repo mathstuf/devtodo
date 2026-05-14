@@ -18,7 +18,7 @@ rustfmt_task:
 
 linux_task:
     container:
-      image: rust:latest
+        image: rust:latest
     matrix:
         - env:
               RUSTVER: stable
