@@ -1,4 +1,13 @@
 clippy_task:
+    matrix:
+        - env:
+              RUST_FEATURES: ""
+        - env:
+              RUST_FEATURES: "--features github"
+        - env:
+              RUST_FEATURES: "--features gitlab"
+        - env:
+              RUST_FEATURES: "--all-features"
     container:
         image: rust:latest
     component_script: rustup component add clippy
@@ -8,7 +17,7 @@ clippy_task:
     cargo_cache:
         folder: $CARGO_HOME/registry
         fingerprint_script: cat Cargo.lock
-    fmt_script: cargo clippy
+    fmt_script: cargo clippy $RUST_FEATURES
 
 rustfmt_task:
     container:
@@ -22,9 +31,14 @@ linux_task:
     matrix:
         - env:
               RUSTVER: stable
+              RUST_FEATURES: --all-features
+        - env:
+              RUSTVER: stable
+              RUST_FEATURES: ""
         - allow_failures: true
           env:
               RUSTVER: nightly
+              RUST_FEATURES: --all-features
     rustup_script: rustup toolchain install $RUSTVER
     toolchain_cache:
         folder: $RUSTUP_HOME
@@ -32,6 +46,6 @@ linux_task:
     cargo_cache:
         folder: $CARGO_HOME/registry
         fingerprint_script: cat Cargo.lock
-    build_script: cargo +$RUSTVER build
-    test_script: cargo +$RUSTVER test
+    build_script: cargo +$RUSTVER build $RUST_FEATURES
+    test_script: cargo +$RUSTVER test $RUST_FEATURES
     before_cache_script: rm -rf $CARGO_HOME/registry/index
