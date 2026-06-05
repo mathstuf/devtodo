@@ -120,6 +120,7 @@ pub struct ForgejoQuery {
 }
 
 impl ForgejoQuery {
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
         let url = Url::parse(&format!("https://{actual_host}")).unwrap_or_else(|_| {
@@ -134,6 +135,7 @@ impl ForgejoQuery {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Forgejo, filters: &[Filter]) -> Result<Vec<ForgejoItem>, ItemError> {
         let mut items = Vec::new();
 
@@ -257,6 +259,7 @@ impl ForgejoQuery {
         Ok(items)
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Forgejo,
         project_paths: &[String],

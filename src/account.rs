@@ -54,6 +54,7 @@ pub enum AccountError {
     UnknownService { service: String },
 }
 
+#[expect(clippy::single_call_fn, reason = "function size")]
 pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
     match account.service.as_ref() {
         #[cfg(feature = "github")]

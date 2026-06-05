@@ -86,6 +86,7 @@ enum SetupError {
 }
 
 impl SetupError {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn read_config(path: PathBuf, source: io::Error) -> Self {
         Self::ReadConfig {
             path,
@@ -93,6 +94,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
             path,
@@ -100,6 +102,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn account(name: String, source: account::AccountError) -> Self {
         Self::Account {
             name,
@@ -107,6 +110,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
         Self::ReadDir {
             path,
@@ -115,6 +119,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn read_entry(name: String, source: io::Error) -> Self {
         Self::ReadEntry {
             name,
@@ -122,6 +127,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
         Self::TodoFile {
             path,
@@ -129,12 +135,14 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn no_such_account(name: String) -> Self {
         Self::NoSuchAccount {
             name,
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
         Self::FetchItems {
             account,
@@ -143,6 +151,7 @@ impl SetupError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
         Self::WriteErrors {
             errors,
@@ -150,6 +159,7 @@ impl SetupError {
     }
 }
 
+#[expect(clippy::single_call_fn, reason = "function size")]
 fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupError> {
     let mut todo_files = Vec::new();
     let dir_iter = fs::read_dir(dirpath)
@@ -212,6 +222,7 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
     Ok(todo_files)
 }
 
+#[expect(clippy::single_call_fn, reason = "separate concerns")]
 fn try_main() -> Result<(), SetupError> {
     let matches = Command::new("devtodo")
         .version(clap::crate_version!())

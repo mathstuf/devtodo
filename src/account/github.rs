@@ -184,6 +184,7 @@ impl_pull_request!(
 );
 
 impl GithubQuery {
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let conninfo = ConnInfo {
             host: host.unwrap_or_else(|| "api.github.com".into()),
@@ -207,6 +208,7 @@ impl GithubQuery {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(
         client: &client::Github,
         filters: &[Filter],
@@ -325,6 +327,7 @@ impl GithubQuery {
         Ok(items)
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &client::Github,
         projects: &[String],

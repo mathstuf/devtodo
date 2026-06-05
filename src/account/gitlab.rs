@@ -150,6 +150,7 @@ pub struct GitlabQuery {
 }
 
 impl GitlabQuery {
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let actual_host = host.unwrap_or_else(|| "gitlab.com".into());
         let client = Gitlab::new(&actual_host, token);
@@ -159,6 +160,7 @@ impl GitlabQuery {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Gitlab, filters: &[Filter]) -> Result<Vec<GitlabItem>, ItemError> {
         let mut items = Vec::new();
         let labels = filters.iter().map(|filter| {
@@ -305,6 +307,7 @@ impl GitlabQuery {
         Ok(items)
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Gitlab,
         project_paths: &[String],
