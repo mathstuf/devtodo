@@ -1,8 +1,13 @@
 [package]
 name = "devtodo"
 version = "0.1.0"
-authors = ["Ben Boeckel <mathstuf@gmail.com>"]
 edition = "2018"
+description = "Synchronize GitHub/GitLab/Forgejo issue and PR statuses into local iCal VTODO files"
+repository = "https://github.com/mathstuf/devtodo"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["github", "gitlab", "forgejo", "todo", "ical"]
+categories = ["command-line-utilities"]
 
 [features]
 default = ["github"]
