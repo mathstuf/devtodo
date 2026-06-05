@@ -257,7 +257,7 @@ where
             Err(err) => {
                 if err.should_backoff() {
                     thread::sleep(timeout);
-                    timeout *= BACKOFF_SCALE;
+                    timeout = timeout.saturating_mul(BACKOFF_SCALE);
                 } else {
                     return Err(err);
                 }
