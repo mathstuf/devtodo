@@ -241,8 +241,9 @@ impl GithubQuery {
         }
     }
 
+    /// Query all viewer issues from GitHub, paginating automatically.
     #[expect(clippy::single_call_fn, reason = "function size")]
-    fn query_user(
+    fn query_viewer_issues(
         client: &client::Github,
         filters: &[Filter],
     ) -> Result<Vec<GithubItem>, ItemError> {
@@ -269,7 +270,6 @@ impl GithubQuery {
 
         let mut items = Vec::new();
 
-        // Query for issue information.
         loop {
             let query = queries::ViewerIssues::build_query(issues_input.clone());
             let rsp = client
@@ -304,6 +304,17 @@ impl GithubQuery {
                 break;
             }
         }
+
+        Ok(items)
+    }
+
+    /// Query all issues and pull requests for the authenticated user.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_user(
+        client: &client::Github,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
+        let mut items = Self::query_viewer_issues(client, filters)?;
 
         let mut prs_input = queries::viewer_pull_requests::Variables {
             labels: None,
