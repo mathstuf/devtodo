@@ -161,7 +161,7 @@ impl TodoFile {
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn extract_component_as_mut(component: &mut Component) -> Option<&mut Component> {
         Self::is_our_component(component)?;
-        let subcomponent = &mut component.subcomponents[0];
+        let subcomponent = component.subcomponents.get_mut(0)?;
         if subcomponent.name != "VTODO" {
             return None;
         }
@@ -172,7 +172,7 @@ impl TodoFile {
     #[expect(clippy::single_call_fn, reason = "convenience accessor")]
     fn extract_component_as_ref(component: &Component) -> Option<&Component> {
         Self::is_our_component(component)?;
-        let subcomponent = &component.subcomponents[0];
+        let subcomponent = component.subcomponents.first()?;
         if subcomponent.name != "VTODO" {
             return None;
         }

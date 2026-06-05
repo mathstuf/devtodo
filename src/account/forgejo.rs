@@ -299,12 +299,10 @@ impl ForgejoQuery {
 
         for project_path in project_paths {
             // Parse owner/repo from project path
-            let parts: Vec<&str> = project_path.splitn(2, '/').collect();
-            if parts.len() != 2 {
+            let Some((owner, repo)) = project_path.split_once('/') else {
                 warn!("invalid project path (expected owner/repo): {project_path}");
                 continue;
-            }
-            let (owner, repo) = (parts[0], parts[1]);
+            };
 
             // Query project issues
             {
