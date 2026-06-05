@@ -34,7 +34,7 @@ pub enum ItemError {
     },
 }
 
-pub type ItemLookup<'a> = BTreeMap<String, &'a mut TodoItem>;
+pub type ItemLookup<'item> = BTreeMap<String, &'item mut TodoItem>;
 
 pub trait ItemSource {
     fn fetch_items(

@@ -147,7 +147,7 @@ impl Github {
     where
         Q: GraphQLQuery,
         Q::Variables: Debug,
-        for<'d> Q::ResponseData: Deserialize<'d>,
+        for<'rsp> Q::ResponseData: Deserialize<'rsp>,
     {
         info!(
             target: "github",
@@ -190,7 +190,7 @@ impl Github {
     where
         Q: GraphQLQuery,
         Q::Variables: Debug,
-        for<'d> Q::ResponseData: Deserialize<'d>,
+        for<'rsp> Q::ResponseData: Deserialize<'rsp>,
     {
         retry_with_backoff(|| self.send_impl::<Q>(query))
     }
