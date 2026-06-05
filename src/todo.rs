@@ -401,7 +401,7 @@ impl TodoItem {
     where
         M: Into<String>,
     {
-        let new_milestone = new_milestone.map(|m| m.into());
+        let new_milestone = new_milestone.map(Into::into);
         if self.milestone != new_milestone {
             self.milestone = new_milestone;
             self.last_modified = Utc::now();
