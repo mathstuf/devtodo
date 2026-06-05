@@ -350,15 +350,14 @@ impl GithubQuery {
 
         for project in projects {
             // Parse "owner/repo" format
-            let (owner, name) = match project.split_once('/') {
-                Some((o, n)) => (o.to_owned(), n.to_owned()),
-                None => {
-                    error!("invalid project format (expected owner/repo): {project}");
-                    return Err(ItemError::QueryError {
-                        service: "github",
-                        message: format!("invalid project format (expected owner/repo): {project}"),
-                    });
-                },
+            let (owner, name) = if let Some((owner, name)) = project.split_once('/') {
+                (owner.to_owned(), name.to_owned())
+            } else {
+                error!("invalid project format (expected owner/repo): {project}");
+                return Err(ItemError::QueryError {
+                    service: "github",
+                    message: format!("invalid project format (expected owner/repo): {project}"),
+                });
             };
 
             // Query for repository issues
