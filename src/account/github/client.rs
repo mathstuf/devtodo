@@ -6,6 +6,7 @@
 
 use std::env;
 use std::fmt::Debug;
+use std::iter;
 use std::thread;
 use std::time::Duration;
 
@@ -136,10 +137,7 @@ impl Github {
     fn auth_header(&self) -> GithubResult<HeaderMap> {
         let mut header_value: HeaderValue = format!("bearer {}", self.token).parse().unwrap();
         header_value.set_sensitive(true);
-        Ok([(header::AUTHORIZATION, header_value)]
-            .iter()
-            .cloned()
-            .collect())
+        Ok(iter::once((header::AUTHORIZATION, header_value)).collect())
     }
 
     /// Send a GraphQL query.
