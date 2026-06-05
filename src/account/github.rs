@@ -281,7 +281,7 @@ impl GithubQuery {
                     prs_input
                         .labels
                         .get_or_insert_with(Vec::new)
-                        .push(label.clone())
+                        .push(label.clone());
                 },
             }
         }
