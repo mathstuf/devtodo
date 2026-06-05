@@ -121,14 +121,14 @@ pub struct ForgejoQuery {
 
 impl ForgejoQuery {
     #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
-    pub fn new(host: Option<String>, token: String) -> Self {
+    pub fn new(host: Option<String>, token: &str) -> Self {
         let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
         let url = Url::parse(&format!("https://{actual_host}")).unwrap_or_else(|_| {
             // Fallback if the host is malformed
             Url::parse("https://codeberg.org").unwrap()
         });
 
-        let client = Forgejo::new(Auth::Token(&token), url);
+        let client = Forgejo::new(Auth::Token(token), url);
 
         Self {
             client,
