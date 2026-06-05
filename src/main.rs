@@ -287,11 +287,10 @@ fn try_main() -> Result<(), SetupError> {
     let basedirs = ProjectDirs::from("net.benboeckel.devtodo", "", "devtodo")
         .ok_or(SetupError::NoProjectDir)?;
     let config: Config = {
-        let config_path = if let Some(config) = matches.get_one::<String>("CONFIG") {
-            Path::new(config).into()
-        } else {
-            basedirs.config_dir().join("devtodo.yaml")
-        };
+        let config_path = matches.get_one::<String>("CONFIG").map_or_else(
+            || basedirs.config_dir().join("devtodo.yaml"),
+            |config| Path::new(config).into(),
+        );
         let contents = fs::read_to_string(&config_path)
             .map_err(|err| SetupError::read_config(config_path.clone(), err))?;
         serde_saphyr::from_str(&contents)
