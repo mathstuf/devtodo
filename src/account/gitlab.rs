@@ -192,7 +192,7 @@ impl GitlabQuery {
                 })?;
 
             items.extend(assigned_issues.into_iter().map(GitlabItem::from));
-        }
+        };
 
         // Query issues created by the API user.
         {
@@ -219,7 +219,7 @@ impl GitlabQuery {
                 })?;
 
             items.extend(created_issues.into_iter().map(GitlabItem::from));
-        }
+        };
 
         // Query merge requests assigned to the API user.
         {
@@ -246,7 +246,7 @@ impl GitlabQuery {
                 })?;
 
             items.extend(assigned_mrs.into_iter().map(GitlabItem::from));
-        }
+        };
 
         // Query merge requests created by the API user.
         {
@@ -273,7 +273,7 @@ impl GitlabQuery {
                 })?;
 
             items.extend(created_mrs.into_iter().map(GitlabItem::from));
-        }
+        };
 
         // Query merge requests where the API user is a reviewer.
         {
@@ -300,7 +300,7 @@ impl GitlabQuery {
                 })?;
 
             items.extend(reviewer_mrs.into_iter().map(GitlabItem::from));
-        }
+        };
 
         Ok(items)
     }
@@ -345,7 +345,7 @@ impl GitlabQuery {
                     })?;
 
                 items.extend(project_issues.into_iter().map(GitlabItem::from));
-            }
+            };
 
             // Query project merge requests
             {

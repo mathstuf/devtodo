@@ -181,7 +181,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, false)),
             );
-        }
+        };
 
         // Query issues created by the API user.
         {
@@ -206,7 +206,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, false)),
             );
-        }
+        };
 
         // Query pull requests assigned to the API user.
         {
@@ -231,7 +231,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, true)),
             );
-        }
+        };
 
         // Query pull requests created by the API user.
         {
@@ -256,7 +256,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, true)),
             );
-        }
+        };
 
         Ok(items)
     }
@@ -325,7 +325,7 @@ impl ForgejoQuery {
                         .into_iter()
                         .map(|i| ForgejoItem::from_issue(i, false)),
                 );
-            }
+            };
 
             // Query project pull requests
             {
