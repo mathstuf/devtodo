@@ -16,77 +16,124 @@ use human_panic::setup_panic;
 use log::*;
 use thiserror::Error;
 
+/// Account backend integrations.
 mod account;
+/// Configuration file parsing.
 mod config;
+/// iCalendar todo-file reading and writing.
 mod todo;
 
 use self::config::Config;
 use self::todo::TodoFile;
 
+/// Errors that can occur when initialising the logging backend.
 #[derive(Debug, Error)]
 enum LogError {
+    /// The user requested a logging backend that is not recognised.
     #[error("unknown logger: {}", _0)]
     UnknownLogger(String),
 }
 
+/// The active logging backend.
 enum Logger {
+    /// Log output driven by the `RUST_LOG` environment variable.
     Env,
 }
 
+/// Top-level errors that can occur during startup or sync.
 #[derive(Debug, Error)]
 enum SetupError {
     #[error("failed to determine project directories")]
+    /// Could not determine the platform-specific project directory.
     NoProjectDir,
     #[error("failed to read configuration file {}", path.display())]
-    ReadConfig { path: PathBuf, source: io::Error },
-    #[error("failed to parse configuration file {}", path.display())]
-    ParseConfig {
+    /// Reading the configuration file from disk failed.
+    ReadConfig {
+        /// Path of the config file that could not be read.
         path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
+    #[error("failed to parse configuration file {}", path.display())]
+    /// Deserializing the configuration file failed.
+    ParseConfig {
+        /// Path of the config file that could not be parsed.
+        path: PathBuf,
+        /// The underlying parse error.
         source: serde_saphyr::Error,
     },
     #[error("log error")]
+    /// Setting up the logging backend failed.
     LogError {
         #[from]
+        /// The underlying log-setup error.
         source: LogError,
     },
     #[error("account error for {}", name)]
+    /// Connecting to a service account failed.
     Account {
+        /// The name of the account from the configuration file.
         name: String,
+        /// The underlying account-connection error.
         source: account::AccountError,
     },
     #[error("failed to read directory {} for {}", path.display(), name)]
+    /// Reading the todo directory for a sync target failed.
     ReadDir {
+        /// Path of the directory that could not be read.
         path: PathBuf,
+        /// Name of the sync target whose directory could not be read.
         name: String,
+        /// The underlying I/O error.
         source: io::Error,
     },
     #[error("failed to read file for {}", name)]
-    ReadEntry { name: String, source: io::Error },
+    /// Reading a directory entry within a sync target failed.
+    ReadEntry {
+        /// Name of the sync target in which the read failed.
+        name: String,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
     #[error("failed to read todo information from {}", path.display())]
+    /// Parsing a `.ics` file as a todo item failed.
     TodoFile {
+        /// Path of the `.ics` file that could not be parsed.
         path: PathBuf,
+        /// The underlying todo-parse error.
         source: todo::TodoError,
     },
     #[error("no such account {}", name)]
-    NoSuchAccount { name: String },
+    /// A profile referenced an account name that is not in the configuration.
+    NoSuchAccount {
+        /// The missing account name.
+        name: String,
+    },
     #[error(
         "failed to fetch items from the {} account for the {} profile",
         account,
         profile
     )]
+    /// Fetching items from a service account failed.
     FetchItems {
+        /// The account name that was being queried.
         account: String,
+        /// The profile name that triggered the fetch.
         profile: String,
+        /// The underlying fetch error.
         source: account::ItemError,
     },
     #[error("failed to write {} items", errors.len())]
+    /// One or more todo files could not be written back to disk.
     WriteErrors {
+        /// Per-item error messages paired with the underlying [`todo::TodoError`].
         errors: Vec<(String, todo::TodoError)>,
     },
 }
 
 impl SetupError {
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadConfig` error.
     const fn read_config(path: PathBuf, source: io::Error) -> Self {
         Self::ReadConfig {
             path,
@@ -95,6 +142,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ParseConfig` error.
     const fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
             path,
@@ -103,6 +151,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct an `Account` error.
     const fn account(name: String, source: account::AccountError) -> Self {
         Self::Account {
             name,
@@ -111,6 +160,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadDir` error.
     const fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
         Self::ReadDir {
             path,
@@ -120,6 +170,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadEntry` error.
     const fn read_entry(name: String, source: io::Error) -> Self {
         Self::ReadEntry {
             name,
@@ -128,6 +179,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `TodoFile` error.
     const fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
         Self::TodoFile {
             path,
@@ -136,6 +188,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `NoSuchAccount` error.
     const fn no_such_account(name: String) -> Self {
         Self::NoSuchAccount {
             name,
@@ -143,6 +196,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `FetchItems` error.
     const fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
         Self::FetchItems {
             account,
@@ -152,6 +206,7 @@ impl SetupError {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `WriteErrors` error.
     const fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
         Self::WriteErrors {
             errors,
@@ -160,6 +215,7 @@ impl SetupError {
 }
 
 #[expect(clippy::single_call_fn, reason = "function size")]
+/// Read all `.ics` todo files from `dirpath`, skipping non-files and unrecognised entries.
 fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupError> {
     let mut todo_files = Vec::new();
     let dir_iter = fs::read_dir(dirpath)
@@ -223,6 +279,7 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
 }
 
 #[expect(clippy::single_call_fn, reason = "separate concerns")]
+/// Entry point with a `Result` return so that `main` can report errors uniformly.
 fn try_main() -> Result<(), SetupError> {
     let matches = Command::new("devtodo")
         .version(clap::crate_version!())

@@ -8,10 +8,13 @@ use chrono::{self, Utc};
 use graphql_client::GraphQLQuery;
 use log::{log, trace, Level};
 
+/// Alias to satisfy GraphQL API types.
 type DateTime = chrono::DateTime<Utc>;
 #[expect(clippy::upper_case_acronyms, reason = "Match GraphQL type name")]
+/// Alias to satisfy GraphQL API types.
 type URI = String;
 
+/// Derive [`GraphQLQuery`] for `$name` against the project's schema and query files.
 macro_rules! gql_query_base {
     ($name:ident) => {
         #[derive(GraphQLQuery)]
@@ -26,6 +29,7 @@ macro_rules! gql_query_base {
     };
 }
 
+/// Derive [`GraphQLQuery`] for `$name` and expose a `name()` accessor returning `$query_name`.
 macro_rules! gql_query {
     ($name:ident, $query_name:expr) => {
         gql_query_base!($name);
@@ -47,15 +51,21 @@ gql_query!(ViewerPullRequests, "ViewerPullRequests");
 gql_query!(RepositoryIssues, "RepositoryIssues");
 gql_query!(RepositoryPullRequests, "RepositoryPullRequests");
 
+/// Rate-limit information returned alongside every GitHub GraphQL response.
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimitInfo {
+    /// The GraphQL point cost of the last query.
     pub cost: i64,
+    /// The total point budget for the authenticated user.
     pub limit: i64,
+    /// The number of points remaining before the rate limit resets.
     pub remaining: i64,
+    /// When the rate-limit window resets.
     pub reset_at: DateTime,
 }
 
 impl RateLimitInfo {
+    /// Log the current rate-limit status at an appropriate log level.
     pub(crate) fn inspect(&self, name: &str) {
         let (level, msg) = match self.remaining {
             0 => {
@@ -101,6 +111,7 @@ impl RateLimitInfo {
     }
 }
 
+/// Implement `From<$type> for RateLimitInfo` by mapping standard rate-limit fields.
 macro_rules! impl_into_rate_limit_info {
     ($type:path) => {
         impl From<$type> for RateLimitInfo {

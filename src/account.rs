@@ -11,9 +11,11 @@ use thiserror::Error;
 use crate::config::{Account, Filter, QueryTarget};
 use crate::todo::TodoItem;
 
+/// Shared imports used by all account backend modules.
 mod prelude;
 
 #[cfg(feature = "github")]
+/// GitHub account backend.
 mod github;
 
 #[cfg(feature = "gitlab")]
@@ -22,19 +24,28 @@ mod gitlab;
 #[cfg(feature = "forgejo")]
 mod forgejo;
 
+/// Errors that can occur while fetching items from an account backend.
 #[derive(Debug, Error)]
 #[error("failed to fetch items")]
 pub enum ItemError {
+    /// The backing service is unavailable or not compiled in.
     #[error("service error for {}", service)]
-    ServiceError { service: &'static str },
+    ServiceError {
+        /// The name of the service that encountered an error.
+        service: &'static str,
+    },
+    /// A query to the backing service failed.
     #[error("query error for {}: {}", service, message)]
     QueryError {
+        /// The name of the service that returned an error.
         service: &'static str,
+        /// A human-readable description of what went wrong.
         message: String,
     },
 }
 
 impl ItemError {
+    /// Construct a `QueryError` for the given `service` and `message`.
     pub fn query_error<M>(service: &'static str, message: M) -> Self
     where
         M: Into<String>,
@@ -46,9 +57,12 @@ impl ItemError {
     }
 }
 
+/// Map from item URL to a mutable reference to the existing [`TodoItem`] for that URL.
 pub type ItemLookup<'item> = BTreeMap<String, &'item mut TodoItem>;
 
+/// Trait implemented by each account backend that can fetch todo items.
 pub trait ItemSource {
+    /// Fetch items from this source, updating `existing_items` in place and returning new ones.
     fn fetch_items(
         &self,
         target: &QueryTarget,
@@ -57,15 +71,25 @@ pub trait ItemSource {
     ) -> Result<Vec<TodoItem>, ItemError>;
 }
 
+/// Errors that can occur when connecting to an account backend.
 #[derive(Debug, Error)]
 pub enum AccountError {
+    /// The requested service exists but was not compiled in.
     #[cfg(not(all(feature = "github", feature = "gitlab", feature = "forgejo")))]
     #[error("unsupported service: {}", service)]
-    UnsupportedService { service: &'static str },
+    UnsupportedService {
+        /// The name of the unsupported service.
+        service: &'static str,
+    },
+    /// The requested service name is not recognised at all.
     #[error("unknown service: {}", service)]
-    UnknownService { service: String },
+    UnknownService {
+        /// The unrecognised service name from the configuration file.
+        service: String,
+    },
 }
 
+/// Connect to the account described by `account` and return an [`ItemSource`] for it.
 #[expect(clippy::single_call_fn, reason = "function size")]
 pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
     match account.service.as_ref() {

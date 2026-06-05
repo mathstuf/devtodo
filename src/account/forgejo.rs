@@ -19,19 +19,30 @@ use url::Url;
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
+    /// Optional due date.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status.
     status: TodoStatus,
+    /// Canonical URL of the item on Forgejo.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title, if any.
     milestone: Option<String>,
+    /// Whether this is a draft pull request.
     draft: bool,
 }
 
 impl ForgejoItem {
+    /// Construct a [`ForgejoItem`] from a raw Forgejo `Issue`, treating it as an issue or PR.
     fn from_issue(issue: Issue, is_pull_request: bool) -> Self {
         let kind = if is_pull_request {
             TodoKind::PullRequest
@@ -124,11 +135,14 @@ impl ForgejoItem {
     }
 }
 
+/// An [`ItemSource`] that queries a Forgejo instance.
 pub struct ForgejoQuery {
+    /// The Forgejo client, or the initialization error if construction failed.
     client: Result<Forgejo, forgejo_api::ForgejoError>,
 }
 
 impl ForgejoQuery {
+    /// Create a new `ForgejoQuery` for the given optional `host` and API `token`.
     #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: &str) -> Self {
         let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
@@ -144,6 +158,7 @@ impl ForgejoQuery {
         }
     }
 
+    /// Query all issues and pull requests assigned to or created by the authenticated user.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Forgejo, filters: &[Filter]) -> Result<Vec<ForgejoItem>, ItemError> {
         let mut items = Vec::new();
@@ -262,6 +277,7 @@ impl ForgejoQuery {
         Ok(items)
     }
 
+    /// Query issues and pull requests for a list of `owner/repo` project paths.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Forgejo,
