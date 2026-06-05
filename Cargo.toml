@@ -50,19 +50,19 @@ human-panic = "2.0"
 itertools = "0.14"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-serde-saphyr = "0.0.6"
+serde-saphyr = "0.0.27"
 thiserror = "2.0"
 uuid = { version = "1.4", features = ["v4"] }
-vobject = "0.8"
+vobject = "0.9"
 
 # github feature
-graphql_client = { version = "0.14", optional = true }
-reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
+graphql_client = { version = "0.16", optional = true }
+reqwest = { version = "0.13", features = ["blocking", "json"], optional = true }
 serde_json = { version = "1.0", optional = true }
 url = { version = "2.5.4", optional = true }
 
 # gitlab feature
-gitlab = { version = "=0.1811.0", optional = true }
+gitlab = { version = "=0.1900.0", optional = true }
 
 # forgejo feature
 forgejo-api = { version = "0.10", features = ["sync"], optional = true }
