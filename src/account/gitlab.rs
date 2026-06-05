@@ -183,20 +183,17 @@ impl GitlabQuery {
                 .labels(labels.clone())
                 .build()
                 .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build issues query: {err}"),
-                    }
+                    ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
                 })?;
 
             let assigned_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
                 .query(client)
                 .map_err(|err| {
                     error!("failed to query assigned issues: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query assigned issues: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to query assigned issues: {err}"),
+                    )
                 })?;
 
             items.extend(assigned_issues.into_iter().map(GitlabItem::from));
@@ -210,20 +207,17 @@ impl GitlabQuery {
                 .labels(labels.clone())
                 .build()
                 .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build issues query: {err}"),
-                    }
+                    ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
                 })?;
 
             let created_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
                 .query(client)
                 .map_err(|err| {
                     error!("failed to query created issues: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query created issues: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to query created issues: {err}"),
+                    )
                 })?;
 
             items.extend(created_issues.into_iter().map(GitlabItem::from));
@@ -237,20 +231,20 @@ impl GitlabQuery {
                 .labels(labels.clone())
                 .build()
                 .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build merge requests query: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to build merge requests query: {err}"),
+                    )
                 })?;
 
             let assigned_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
                 .query(client)
                 .map_err(|err| {
                     error!("failed to query assigned merge requests: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query assigned merge requests: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to query assigned merge requests: {err}"),
+                    )
                 })?;
 
             items.extend(assigned_mrs.into_iter().map(GitlabItem::from));
@@ -264,20 +258,20 @@ impl GitlabQuery {
                 .labels(labels.clone())
                 .build()
                 .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build merge requests query: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to build merge requests query: {err}"),
+                    )
                 })?;
 
             let created_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
                 .query(client)
                 .map_err(|err| {
                     error!("failed to query created merge requests: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query created merge requests: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to query created merge requests: {err}"),
+                    )
                 })?;
 
             items.extend(created_mrs.into_iter().map(GitlabItem::from));
@@ -291,20 +285,20 @@ impl GitlabQuery {
                 .state(merge_requests::MergeRequestState::Opened)
                 .build()
                 .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build reviewer merge requests query: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to build reviewer merge requests query: {err}"),
+                    )
                 })?;
 
             let reviewer_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
                 .query(client)
                 .map_err(|err| {
                     error!("failed to query merge requests for review: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query merge requests for review: {err}"),
-                    }
+                    ItemError::query_error(
+                        "gitlab",
+                        format!("failed to query merge requests for review: {err}"),
+                    )
                 })?;
 
             items.extend(reviewer_mrs.into_iter().map(GitlabItem::from));
@@ -335,22 +329,20 @@ impl GitlabQuery {
                     .labels(labels.clone())
                     .build()
                     .map_err(|err| {
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!("failed to build project issues query: {err}"),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to build project issues query: {err}"),
+                        )
                     })?;
 
                 let project_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
                     .query(client)
                     .map_err(|err| {
                         error!("failed to query project {project_path} issues: {err:?}");
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!(
-                                "failed to query project {project_path} issues: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to query project {project_path} issues: {err}"),
+                        )
                     })?;
 
                 items.extend(project_issues.into_iter().map(GitlabItem::from));
@@ -364,10 +356,10 @@ impl GitlabQuery {
                     .labels(labels.clone())
                     .build()
                     .map_err(|err| {
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!("failed to build project merge requests query: {err}"),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to build project merge requests query: {err}"),
+                        )
                     })?;
 
                 let project_mrs: Vec<GitlabMergeRequest> =
@@ -377,12 +369,12 @@ impl GitlabQuery {
                             error!(
                                 "failed to query project {project_path} merge requests: {err:?}",
                             );
-                            ItemError::QueryError {
-                                service: "gitlab",
-                                message: format!(
+                            ItemError::query_error(
+                                "gitlab",
+                                format!(
                                     "failed to query project {project_path} merge requests: {err}",
                                 ),
-                            }
+                            )
                         })?;
 
                 items.extend(project_mrs.into_iter().map(GitlabItem::from));
