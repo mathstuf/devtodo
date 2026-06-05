@@ -227,7 +227,7 @@ impl GithubQuery {
             issue_filters.add_filter(filter);
         }
 
-        let mut input = queries::viewer_issues::Variables {
+        let mut issues_input = queries::viewer_issues::Variables {
             filter_by: issue_filters,
             cursor: None,
         };
@@ -236,7 +236,7 @@ impl GithubQuery {
 
         // Query for issue information.
         loop {
-            let query = queries::ViewerIssues::build_query(input.clone());
+            let query = queries::ViewerIssues::build_query(issues_input.clone());
             let rsp = client
                 .send::<queries::ViewerIssues>(&query)
                 .map_err(|err| {
@@ -263,20 +263,20 @@ impl GithubQuery {
                     "GitHub lied to us and said there is another page, but didn't give us an end \
                      cursor. Bailing to avoid an infinite loop.",
                 );
-                input.cursor = page_info.end_cursor;
+                issues_input.cursor = page_info.end_cursor;
             } else {
                 break;
             }
         }
 
-        let mut input = queries::viewer_pull_requests::Variables {
+        let mut prs_input = queries::viewer_pull_requests::Variables {
             labels: None,
             cursor: None,
         };
         for filter in filters {
             match filter {
                 Filter::Label(label) => {
-                    input
+                    prs_input
                         .labels
                         .get_or_insert_with(Vec::new)
                         .push(label.clone())
@@ -286,7 +286,7 @@ impl GithubQuery {
 
         // Query for pull requests information.
         loop {
-            let query = queries::ViewerPullRequests::build_query(input.clone());
+            let query = queries::ViewerPullRequests::build_query(prs_input.clone());
             let rsp = client
                 .send::<queries::ViewerPullRequests>(&query)
                 .map_err(|err| {
@@ -316,7 +316,7 @@ impl GithubQuery {
                     "GitHub lied to us and said there is another page, but didn't give us an end \
                      cursor. Bailing to avoid an infinite loop.",
                 );
-                input.cursor = page_info.end_cursor;
+                prs_input.cursor = page_info.end_cursor;
             } else {
                 break;
             }
@@ -359,7 +359,7 @@ impl GithubQuery {
             };
 
             // Query for repository issues
-            let mut input = queries::repository_issues::Variables {
+            let mut issues_input = queries::repository_issues::Variables {
                 owner: owner.clone(),
                 name: name.clone(),
                 labels: labels.clone(),
@@ -368,7 +368,7 @@ impl GithubQuery {
             };
 
             loop {
-                let query = queries::RepositoryIssues::build_query(input.clone());
+                let query = queries::RepositoryIssues::build_query(issues_input.clone());
                 let rsp = client
                     .send::<queries::RepositoryIssues>(&query)
                     .map_err(|err| {
@@ -398,7 +398,7 @@ impl GithubQuery {
                             "GitHub lied to us and said there is another page, but didn't give \
                              us an end cursor. Bailing to avoid an infinite loop.",
                         );
-                        input.cursor = page_info.end_cursor;
+                        issues_input.cursor = page_info.end_cursor;
                     } else {
                         break;
                     }
@@ -409,7 +409,7 @@ impl GithubQuery {
             }
 
             // Query for repository pull requests
-            let mut input = queries::repository_pull_requests::Variables {
+            let mut prs_input = queries::repository_pull_requests::Variables {
                 owner: owner.clone(),
                 name: name.clone(),
                 labels: labels.clone(),
@@ -420,7 +420,7 @@ impl GithubQuery {
             };
 
             loop {
-                let query = queries::RepositoryPullRequests::build_query(input.clone());
+                let query = queries::RepositoryPullRequests::build_query(prs_input.clone());
                 let rsp = client
                     .send::<queries::RepositoryPullRequests>(&query)
                     .map_err(|err| {
@@ -454,7 +454,7 @@ impl GithubQuery {
                             "GitHub lied to us and said there is another page, but didn't give \
                              us an end cursor. Bailing to avoid an infinite loop.",
                         );
-                        input.cursor = page_info.end_cursor;
+                        prs_input.cursor = page_info.end_cursor;
                     } else {
                         break;
                     }

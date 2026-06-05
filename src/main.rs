@@ -332,13 +332,13 @@ fn try_main() -> Result<(), SetupError> {
             .collect::<BTreeMap<String, _>>();
 
         let mut all_new_items = Vec::new();
-        for (name, profile) in target.profiles {
+        for (profile_name, profile) in target.profiles {
             let item_source = accounts
                 .get(&profile.account)
                 .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
             let new_items = item_source
                 .fetch_items(&profile.target, &profile.filters, &mut url_map)
-                .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
+                .map_err(|err| SetupError::fetch_items(profile.account, profile_name, err))?;
             all_new_items.extend(new_items);
         }
 
