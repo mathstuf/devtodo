@@ -71,8 +71,8 @@ impl RateLimitInfo {
                 (
                     Level::Warn,
                     format!(
-                        "rate limit is nearing: {} / {} left (resets at {})",
-                        limit, self.limit, self.reset_at,
+                        "rate limit is nearing: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },
@@ -80,8 +80,8 @@ impl RateLimitInfo {
                 (
                     Level::Info,
                     format!(
-                        "rate limit is approaching: {} / {} left (resets at {})",
-                        limit, self.limit, self.reset_at,
+                        "rate limit is approaching: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },
@@ -89,8 +89,8 @@ impl RateLimitInfo {
                 (
                     Level::Debug,
                     format!(
-                        "rate limit is OK: {} / {} left (resets at {})",
-                        limit, self.limit, self.reset_at,
+                        "rate limit is OK: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },

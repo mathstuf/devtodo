@@ -187,9 +187,8 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
                         Ok(real_md) => real_md.file_type(),
                         Err(err) => {
                             warn!(
-                                "failed to read target metadata for {}: {}; ignoring",
+                                "failed to read target metadata for {}: {err}; ignoring",
                                 path.display(),
-                                err,
                             );
                             continue;
                         },
@@ -204,9 +203,8 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
             },
             Err(err) => {
                 warn!(
-                    "failed to read metadata for {}: {}; ignoring",
+                    "failed to read metadata for {}: {err}; ignoring",
                     path.display(),
-                    err,
                 );
                 continue;
             },
