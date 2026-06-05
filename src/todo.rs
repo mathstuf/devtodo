@@ -478,8 +478,7 @@ impl TodoItem {
         };
         let draft = component
             .get_only("X-DRAFT")
-            .map(|p| p.value_as_string() == "TRUE")
-            .unwrap_or(false);
+            .is_some_and(|p| p.value_as_string() == "TRUE");
 
         Some(Self {
             uid,

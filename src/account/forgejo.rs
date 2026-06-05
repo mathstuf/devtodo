@@ -40,11 +40,7 @@ impl ForgejoItem {
         };
 
         let state = issue.state.unwrap_or(StateType::Open);
-        let has_assignees = issue
-            .assignees
-            .as_ref()
-            .map(|a| !a.is_empty())
-            .unwrap_or(false);
+        let has_assignees = issue.assignees.as_ref().is_some_and(|a| !a.is_empty());
 
         let status = match state {
             StateType::Closed => {
