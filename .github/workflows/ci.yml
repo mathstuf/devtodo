@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: Clippy (${{ matrix.features || 'no features' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: ""
+          - features: "--features github"
+          - features: "--features gitlab"
+          - features: "--features forgejo"
+          - features: "--all-features"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: clippy-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: clippy-${{ matrix.features }}-
+      - run: cargo clippy ${{ matrix.features }}
+
+  rustfmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  test:
+    name: Test (${{ matrix.rustver }}, ${{ matrix.features || 'no features' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rustver: stable
+            features: "--all-features"
+          - rustver: stable
+            features: ""
+          - rustver: nightly
+            features: "--all-features"
+            allow_failures: true
+    continue-on-error: ${{ matrix.allow_failures == true }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ matrix.rustver }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: test-${{ matrix.rustver }}-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: test-${{ matrix.rustver }}-${{ matrix.features }}-
+      - run: cargo build ${{ matrix.features }}
+      - run: cargo test ${{ matrix.features }}
