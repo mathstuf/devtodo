@@ -89,7 +89,7 @@ pub fn connect(account: Account) -> Result<Box<dyn ItemSource>, AccountError> {
         "forgejo" => {
             Ok(Box::new(forgejo::ForgejoQuery::new(
                 account.hostname,
-                account.secret,
+                &account.secret,
             )))
         },
         #[cfg(not(feature = "forgejo"))]

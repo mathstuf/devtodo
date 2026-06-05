@@ -136,7 +136,7 @@ impl TodoFile {
         let component = vobject::parse_component(&contents)?;
 
         Ok(Self::extract_component(&component)
-            .and_then(TodoItem::from_component)
+            .and_then(|c| TodoItem::from_component(&c))
             .map(|item| {
                 Self {
                     path,
@@ -430,7 +430,7 @@ impl TodoItem {
     }
 
     #[expect(clippy::single_call_fn, reason = "function size")]
-    fn from_component(component: Component) -> Option<Self> {
+    fn from_component(component: &Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
         let (kind, labels, milestone) = {
             let categories_value = component.get_only("CATEGORIES")?.value_as_string();
