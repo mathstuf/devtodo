@@ -237,7 +237,7 @@ impl ForgejoQuery {
                 created: Some(true),
                 state: Some(IssueSearchIssuesQueryState::Open),
                 r#type: Some(IssueSearchIssuesQueryType::Pulls),
-                labels: labels.clone(),
+                labels,
                 ..Default::default()
             };
 
