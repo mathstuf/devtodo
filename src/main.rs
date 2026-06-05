@@ -276,10 +276,10 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
     Ok(todo_files)
 }
 
-#[expect(clippy::single_call_fn, reason = "separate concerns")]
-/// Entry point with a `Result` return so that `main` can report errors uniformly.
-fn try_main() -> Result<(), SetupError> {
-    let matches = Command::new("devtodo")
+/// Build the CLI argument parser.
+#[expect(clippy::single_call_fn, reason = "function size")]
+fn build_command() -> clap::Command {
+    Command::new("devtodo")
         .version(clap::crate_version!())
         .author("Ben Boeckel <mathstuf@gmail.com>")
         .about("Query code hosting platforms for todo items to add to a calendar")
@@ -323,7 +323,12 @@ fn try_main() -> Result<(), SetupError> {
                 .value_name("LOGGER")
                 .action(ArgAction::Set),
         )
-        .get_matches();
+}
+
+#[expect(clippy::single_call_fn, reason = "separate concerns")]
+/// Entry point with a `Result` return so that `main` can report errors uniformly.
+fn try_main() -> Result<(), SetupError> {
+    let matches = build_command().get_matches();
 
     let log_level = match matches.get_one::<u8>("DEBUG").copied().unwrap_or(0) {
         0 => LevelFilter::Error,
