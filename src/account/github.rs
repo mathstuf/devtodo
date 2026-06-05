@@ -270,11 +270,13 @@ impl GithubQuery {
             }
 
             if page_info.has_next_page {
-                assert!(
-                    page_info.end_cursor.is_some(),
-                    "GitHub lied to us and said there is another page, but didn't give us an end \
-                     cursor. Bailing to avoid an infinite loop.",
-                );
+                if page_info.end_cursor.is_none() {
+                    return Err(ItemError::query_error(
+                        "github",
+                        "GitHub reported another page of issues but provided no end \
+                                  cursor; bailing to avoid an infinite loop.",
+                    ));
+                }
                 issues_input.cursor = page_info.end_cursor;
             } else {
                 break;
@@ -322,11 +324,13 @@ impl GithubQuery {
             }
 
             if page_info.has_next_page {
-                assert!(
-                    page_info.end_cursor.is_some(),
-                    "GitHub lied to us and said there is another page, but didn't give us an end \
-                     cursor. Bailing to avoid an infinite loop.",
-                );
+                if page_info.end_cursor.is_none() {
+                    return Err(ItemError::query_error(
+                        "github",
+                        "GitHub reported another page of pull requests but provided no \
+                                  end cursor; bailing to avoid an infinite loop.",
+                    ));
+                }
                 prs_input.cursor = page_info.end_cursor;
             } else {
                 break;
@@ -402,11 +406,13 @@ impl GithubQuery {
                     }
 
                     if page_info.has_next_page {
-                        assert!(
-                            page_info.end_cursor.is_some(),
-                            "GitHub lied to us and said there is another page, but didn't give \
-                             us an end cursor. Bailing to avoid an infinite loop.",
-                        );
+                        if page_info.end_cursor.is_none() {
+                            return Err(ItemError::query_error(
+                                "github",
+                                "GitHub reported another page of issues but provided no \
+                                          end cursor; bailing to avoid an infinite loop.",
+                            ));
+                        }
                         issues_input.cursor = page_info.end_cursor;
                     } else {
                         break;
@@ -457,11 +463,14 @@ impl GithubQuery {
                     }
 
                     if page_info.has_next_page {
-                        assert!(
-                            page_info.end_cursor.is_some(),
-                            "GitHub lied to us and said there is another page, but didn't give \
-                             us an end cursor. Bailing to avoid an infinite loop.",
-                        );
+                        if page_info.end_cursor.is_none() {
+                            return Err(ItemError::query_error(
+                                "github",
+                                "GitHub reported another page of pull requests but \
+                                          provided no end cursor; bailing to avoid an infinite \
+                                          loop.",
+                            ));
+                        }
                         prs_input.cursor = page_info.end_cursor;
                     } else {
                         break;
