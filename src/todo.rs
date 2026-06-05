@@ -136,7 +136,7 @@ impl TodoFile {
         let component = vobject::parse_component(&contents)?;
 
         Ok(Self::extract_component(&component)
-            .and_then(|c| TodoItem::from_component(&c))
+            .and_then(|comp| TodoItem::from_component(&comp))
             .map(|item| {
                 Self {
                     path,
@@ -253,11 +253,11 @@ pub enum Due {
 }
 
 impl Due {
-    fn from_str(s: &str) -> Option<Self> {
-        Some(match NaiveDateTime::parse_from_str(s, DATE_TIME_FMT) {
+    fn from_str(str: &str) -> Option<Self> {
+        Some(match NaiveDateTime::parse_from_str(str, DATE_TIME_FMT) {
             Ok(dt) => Self::DateTime(Utc.from_utc_datetime(&dt)),
             Err(_) => {
-                NaiveDate::parse_from_str(s, DATE_FMT)
+                NaiveDate::parse_from_str(str, DATE_FMT)
                     .map(Self::Date)
                     .ok()?
             },
@@ -268,7 +268,7 @@ impl Due {
 impl fmt::Display for Due {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Date(d) => write!(f, "{}", d.format(DATE_FMT)),
+            Self::Date(date) => write!(f, "{}", date.format(DATE_FMT)),
             Self::DateTime(dt) => write!(f, "{}", dt.format(DATE_TIME_FMT)),
         }
     }
@@ -488,7 +488,7 @@ impl TodoItem {
         };
         let draft = component
             .get_only("X-DRAFT")
-            .is_some_and(|p| p.value_as_string() == "TRUE");
+            .is_some_and(|is_draft| is_draft.value_as_string() == "TRUE");
 
         Some(Self {
             uid,
@@ -558,7 +558,7 @@ impl TodoItem {
                     .split(',')
                     .filter(|&cat| {
                         // Filter out kind categories, label- categories, and milestone- categories
-                        !ALL_TODO_KINDS.iter().any(|k| cat == k.category())
+                        !ALL_TODO_KINDS.iter().any(|kind| cat == kind.category())
                             && !cat.starts_with("label-")
                             && !cat.starts_with("milestone-")
                     })
@@ -567,8 +567,11 @@ impl TodoItem {
             })
             .unwrap_or_default();
 
-        let label_categories = self.labels.iter().map(|l| format!("label-{l}"));
-        let milestone_category = self.milestone.iter().map(|m| format!("milestone-{m}"));
+        let label_categories = self.labels.iter().map(|label| format!("label-{label}"));
+        let milestone_category = self
+            .milestone
+            .iter()
+            .map(|milestone| format!("milestone-{milestone}"));
 
         let new_categories = existing_categories
             .into_iter()
