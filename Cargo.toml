@@ -53,7 +53,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde-saphyr = "0.0.6"
 thiserror = "2.0"
 uuid = { version = "1.4", features = ["v4"] }
-vobject = "0.8"
+vobject = "0.9"
 
 # github feature
 graphql_client = { version = "0.14", optional = true }

@@ -2569,9 +2569,9 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vobject"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8e14105ff81c412a384d9e54384d4c88e1b15953c125ff02802bd95e6779df7"
+checksum = "7bc9116aeb7c7739420de4af1151af696559f0b96a4ebde76c8407af76002847"
 dependencies = [
  "thiserror 1.0.69",
 ]
