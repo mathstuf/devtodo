@@ -58,46 +58,46 @@ pub enum GithubError {
 
 impl GithubError {
     fn should_backoff(&self) -> bool {
-        matches!(self, GithubError::GithubService { .. })
+        matches!(self, Self::GithubService { .. })
     }
 
     pub fn send_request(endpoint: Url, source: reqwest::Error) -> Self {
-        GithubError::SendRequest {
+        Self::SendRequest {
             endpoint,
             source,
         }
     }
 
     pub fn github(response: String) -> Self {
-        GithubError::Github {
+        Self::Github {
             response,
         }
     }
 
     fn github_service(status: reqwest::StatusCode) -> Self {
-        GithubError::GithubService {
+        Self::GithubService {
             status,
         }
     }
 
     pub fn json_response(source: reqwest::Error) -> Self {
-        GithubError::JsonResponse {
+        Self::JsonResponse {
             source,
         }
     }
 
     fn graphql(message: Vec<graphql_client::Error>) -> Self {
-        GithubError::GraphQL {
+        Self::GraphQL {
             message,
         }
     }
 
     fn no_response() -> Self {
-        GithubError::NoResponse {}
+        Self::NoResponse {}
     }
 
     fn github_backoff() -> Self {
-        GithubError::GithubBackoff {}
+        Self::GithubBackoff {}
     }
 }
 
@@ -125,7 +125,7 @@ impl Github {
     {
         let gql_endpoint = Url::parse(&format!("https://{host}/graphql"))?;
 
-        Ok(Github {
+        Ok(Self {
             client: Client::new(),
             gql_endpoint,
             token: token.into(),

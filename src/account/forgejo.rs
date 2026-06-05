@@ -133,7 +133,7 @@ impl ForgejoQuery {
 
         let client = Forgejo::new(Auth::Token(&token), url);
 
-        ForgejoQuery {
+        Self {
             client,
         }
     }

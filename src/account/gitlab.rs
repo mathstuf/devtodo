@@ -154,7 +154,7 @@ impl GitlabQuery {
         let host = host.unwrap_or_else(|| "gitlab.com".into());
         let client = Gitlab::new(&host, token);
 
-        GitlabQuery {
+        Self {
             client,
         }
     }

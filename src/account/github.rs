@@ -189,7 +189,7 @@ impl GithubQuery {
             host: host.unwrap_or_else(|| "api.github.com".into()),
             token,
         };
-        GithubQuery {
+        Self {
             client: LazyCell::new(Box::new(move || {
                 client::Github::new(&conninfo.host, &conninfo.token)
             })),

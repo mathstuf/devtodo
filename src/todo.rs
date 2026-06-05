@@ -247,8 +247,12 @@ pub enum Due {
 impl Due {
     fn from_str(s: &str) -> Option<Self> {
         Some(match NaiveDateTime::parse_from_str(s, DATE_TIME_FMT) {
-            Ok(dt) => Due::DateTime(Utc.from_utc_datetime(&dt)),
-            Err(_) => NaiveDate::parse_from_str(s, DATE_FMT).map(Due::Date).ok()?,
+            Ok(dt) => Self::DateTime(Utc.from_utc_datetime(&dt)),
+            Err(_) => {
+                NaiveDate::parse_from_str(s, DATE_FMT)
+                    .map(Self::Date)
+                    .ok()?
+            },
         })
     }
 }
@@ -256,8 +260,8 @@ impl Due {
 impl fmt::Display for Due {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Due::Date(d) => write!(f, "{}", d.format(DATE_FMT)),
-            Due::DateTime(dt) => write!(f, "{}", dt.format(DATE_TIME_FMT)),
+            Self::Date(d) => write!(f, "{}", d.format(DATE_FMT)),
+            Self::DateTime(dt) => write!(f, "{}", dt.format(DATE_TIME_FMT)),
         }
     }
 }
@@ -478,7 +482,7 @@ impl TodoItem {
             .map(|p| p.value_as_string() == "TRUE")
             .unwrap_or(false);
 
-        Some(TodoItem {
+        Some(Self {
             uid,
             kind,
             created,
