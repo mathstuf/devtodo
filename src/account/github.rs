@@ -252,8 +252,8 @@ impl GithubQuery {
                 &rsp.rate_limit_info.rate_limit,
                 queries::ViewerIssues::name(),
             );
-            let (issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
-            if let Some(issues) = issues {
+            let (gql_issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
+            if let Some(issues) = gql_issues {
                 items.extend(issues.into_iter().flatten().map(Into::into));
             }
 
@@ -302,11 +302,11 @@ impl GithubQuery {
                 &rsp.rate_limit_info.rate_limit,
                 queries::ViewerPullRequests::name(),
             );
-            let (prs, page_info) = (
+            let (gql_prs, page_info) = (
                 rsp.viewer.pull_requests.items,
                 rsp.viewer.pull_requests.page_info,
             );
-            if let Some(prs) = prs {
+            if let Some(prs) = gql_prs {
                 items.extend(prs.into_iter().flatten().map(Into::into));
             }
 
@@ -387,8 +387,8 @@ impl GithubQuery {
                 );
 
                 if let Some(repo) = rsp.repository {
-                    let (issues, page_info) = (repo.issues.items, repo.issues.page_info);
-                    if let Some(issues) = issues {
+                    let (gql_issues, page_info) = (repo.issues.items, repo.issues.page_info);
+                    if let Some(issues) = gql_issues {
                         items.extend(issues.into_iter().flatten().map(GithubItem::from));
                     }
 
@@ -442,8 +442,9 @@ impl GithubQuery {
                 );
 
                 if let Some(repo) = rsp.repository {
-                    let (prs, page_info) = (repo.pull_requests.items, repo.pull_requests.page_info);
-                    if let Some(prs) = prs {
+                    let (gql_prs, page_info) =
+                        (repo.pull_requests.items, repo.pull_requests.page_info);
+                    if let Some(prs) = gql_prs {
                         items.extend(prs.into_iter().flatten().map(GithubItem::from));
                     }
 
@@ -522,9 +523,7 @@ impl ItemSource for GithubQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

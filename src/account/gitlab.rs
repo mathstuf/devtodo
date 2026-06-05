@@ -151,8 +151,8 @@ pub struct GitlabQuery {
 
 impl GitlabQuery {
     pub fn new(host: Option<String>, token: String) -> Self {
-        let host = host.unwrap_or_else(|| "gitlab.com".into());
-        let client = Gitlab::new(&host, token);
+        let actual_host = host.unwrap_or_else(|| "gitlab.com".into());
+        let client = Gitlab::new(&actual_host, token);
 
         Self {
             client,
@@ -444,9 +444,7 @@ impl ItemSource for GitlabQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

@@ -125,8 +125,8 @@ pub struct ForgejoQuery {
 
 impl ForgejoQuery {
     pub fn new(host: Option<String>, token: String) -> Self {
-        let host = host.unwrap_or_else(|| "codeberg.org".into());
-        let url = Url::parse(&format!("https://{host}")).unwrap_or_else(|_| {
+        let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
+        let url = Url::parse(&format!("https://{actual_host}")).unwrap_or_else(|_| {
             // Fallback if the host is malformed
             Url::parse("https://codeberg.org").unwrap()
         });
@@ -415,9 +415,7 @@ impl ItemSource for ForgejoQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

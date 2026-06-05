@@ -154,8 +154,8 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
     let mut todo_files = Vec::new();
     let dir_iter = fs::read_dir(dirpath)
         .map_err(|err| SetupError::read_dir(dirpath.into(), name.into(), err))?;
-    for entry in dir_iter {
-        let entry = entry.map_err(|err| SetupError::read_entry(name.into(), err))?;
+    for dir_entry in dir_iter {
+        let entry = dir_entry.map_err(|err| SetupError::read_entry(name.into(), err))?;
         let path = entry.path();
 
         // Only look at `.ics` files.

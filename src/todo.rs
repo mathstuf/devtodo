@@ -366,9 +366,9 @@ impl TodoItem {
     where
         S: Into<String>,
     {
-        let new_summary = new_summary.into();
-        if self.summary != new_summary {
-            self.summary = new_summary;
+        let summary = new_summary.into();
+        if self.summary != summary {
+            self.summary = summary;
             self.last_modified = Utc::now();
             self.updated = true;
         }
@@ -378,12 +378,11 @@ impl TodoItem {
     where
         D: Into<String>,
     {
-        let new_description = new_description.into();
         // Replace CR in the new description with nothing. These are lost upon reading them back
         // from the ical format.
-        let new_description = new_description.replace('\r', "");
-        if self.description != new_description {
-            self.description = new_description;
+        let description = new_description.into().replace('\r', "");
+        if self.description != description {
+            self.description = description;
             self.last_modified = Utc::now();
             self.updated = true;
         }
@@ -401,9 +400,9 @@ impl TodoItem {
     where
         M: Into<String>,
     {
-        let new_milestone = new_milestone.map(Into::into);
-        if self.milestone != new_milestone {
-            self.milestone = new_milestone;
+        let milestone = new_milestone.map(Into::into);
+        if self.milestone != milestone {
+            self.milestone = milestone;
             self.last_modified = Utc::now();
             self.updated = true;
         }

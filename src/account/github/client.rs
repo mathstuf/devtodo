@@ -153,7 +153,7 @@ impl Github {
             query.operation_name,
             query.variables,
         );
-        let rsp = self
+        let http_rsp = self
             .client
             .post(self.gql_endpoint.clone())
             .headers(self.auth_header()?)
@@ -161,22 +161,22 @@ impl Github {
             .json(query)
             .send()
             .map_err(|err| GithubError::send_request(self.gql_endpoint.clone(), err))?;
-        if rsp.status().is_server_error() {
+        if http_rsp.status().is_server_error() {
             warn!(
                 target: "github",
                 "service error {} for query; retrying with backoff",
-                rsp.status().as_u16(),
+                http_rsp.status().as_u16(),
             );
-            return Err(GithubError::github_service(rsp.status()));
+            return Err(GithubError::github_service(http_rsp.status()));
         }
-        if !rsp.status().is_success() {
-            let err = rsp
+        if !http_rsp.status().is_success() {
+            let err = http_rsp
                 .text()
                 .unwrap_or_else(|text_err| format!("failed to extract error body: {text_err:?}"));
             return Err(GithubError::github(err));
         }
 
-        let rsp: Response<Q::ResponseData> = rsp.json().map_err(GithubError::json_response)?;
+        let rsp: Response<Q::ResponseData> = http_rsp.json().map_err(GithubError::json_response)?;
         if let Some(errs) = rsp.errors {
             return Err(GithubError::graphql(errs));
         }
