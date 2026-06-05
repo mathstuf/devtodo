@@ -254,6 +254,10 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
                     filetype
                 };
                 // Ignore non-files.
+                #[expect(
+                    clippy::filetype_is_file,
+                    reason = "actual files are wanted; symlinks are handled above"
+                )]
                 if !real_filetype.is_file() {
                     continue;
                 }
