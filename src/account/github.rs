@@ -12,34 +12,53 @@ use log::{error, warn};
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// Low-level HTTP client for the GitHub GraphQL API.
 mod client;
+/// GraphQL query definitions and associated helpers.
 mod queries;
 
+/// Connection parameters for a GitHub instance.
 struct ConnInfo {
+    /// The API hostname (e.g. `"api.github.com"` or a GHES hostname).
     host: String,
+    /// The personal access token used to authenticate requests.
     token: String,
 }
 
+/// An [`ItemSource`] that queries a GitHub instance.
 pub struct GithubQuery {
+    /// Lazily-initialized GitHub client; holds the construction result.
     client: LazyCell<
         client::GithubResult<client::Github>,
         Box<dyn Fn() -> client::GithubResult<client::Github>>,
     >,
+    /// Stores the unit value once an initialization error has been logged.
     init_error_cell: OnceCell<()>,
 }
 
+/// A single item retrieved from the GitHub API, prior to conversion into a [`TodoItem`].
 struct GithubItem {
+    /// Due date derived from the item's milestone, if any.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status of the item.
     status: TodoStatus,
+    /// Canonical URL of the item on GitHub.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title associated with the item, if any.
     milestone: Option<String>,
+    /// Whether this is a draft pull request.
     draft: bool,
 }
 
+/// Implement `add_filter` for a GraphQL issue-filter type.
 macro_rules! impl_issue_filter {
     ($type:path) => {
         impl $type {
@@ -56,6 +75,7 @@ macro_rules! impl_issue_filter {
 
 impl_issue_filter!(queries::viewer_issues::IssueFilters);
 
+/// Implement `From<$type> for GithubItem` for a GraphQL issue response type.
 macro_rules! impl_issue {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
@@ -124,6 +144,7 @@ impl_issue!(
     queries::repository_issues::IssueState
 );
 
+/// Implement `From<$type> for GithubItem` for a GraphQL pull-request response type.
 macro_rules! impl_pull_request {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
@@ -195,6 +216,7 @@ impl_pull_request!(
 );
 
 impl GithubQuery {
+    /// Create a new `GithubQuery` for the given optional `host` and `token`.
     #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let conninfo = ConnInfo {
@@ -340,6 +362,7 @@ impl GithubQuery {
         Ok(items)
     }
 
+    /// Query issues and pull requests across multiple repositories.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &client::Github,

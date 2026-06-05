@@ -15,51 +15,85 @@ use serde::Deserialize;
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// Placeholder for a GitLab user in deserialized API responses.
 #[derive(Debug, Deserialize)]
 struct GitlabUser;
 
+/// A GitLab milestone associated with an issue or merge request.
 #[derive(Debug, Deserialize)]
 struct GitlabMilestone {
+    /// Milestone title.
     title: String,
+    /// Optional due date of the milestone.
     due_date: Option<NaiveDate>,
 }
 
+/// A GitLab issue as returned by the REST API.
 #[derive(Debug, Deserialize)]
 struct GitlabIssue {
+    /// Title of the issue.
     title: String,
+    /// Body text of the issue.
     description: Option<String>,
+    /// Current state (e.g. `"opened"` or `"closed"`).
     state: String,
+    /// Canonical URL of the issue.
     web_url: String,
+    /// Users currently assigned to the issue.
     assignees: Vec<GitlabUser>,
+    /// Optional start date.
     start_date: Option<NaiveDate>,
+    /// Optional due date.
     due_date: Option<NaiveDate>,
+    /// Associated milestone, if any.
     milestone: Option<GitlabMilestone>,
+    /// Labels applied to the issue.
     labels: Vec<String>,
 }
 
+/// A GitLab merge request as returned by the REST API.
 #[derive(Debug, Deserialize)]
 struct GitlabMergeRequest {
+    /// Title of the merge request.
     title: String,
+    /// Body text of the merge request.
     description: Option<String>,
+    /// Current state (`"opened"`, `"closed"`, or `"merged"`).
     state: String,
+    /// Canonical URL of the merge request.
     web_url: String,
+    /// Users currently assigned to the merge request.
     assignees: Vec<GitlabUser>,
+    /// Associated milestone, if any.
     milestone: Option<GitlabMilestone>,
+    /// Labels applied to the merge request.
     labels: Vec<String>,
     #[serde(default)]
+    /// Whether the merge request is a draft.
     draft: bool,
 }
 
+/// A single item retrieved from the GitLab API, prior to conversion into a [`TodoItem`].
 struct GitlabItem {
+    /// Optional start date.
     start: Option<Due>,
+    /// Optional due date.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status.
     status: TodoStatus,
+    /// Canonical URL of the item on GitLab.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title, if any.
     milestone: Option<String>,
+    /// Whether this is a draft merge request.
     draft: bool,
 }
 
@@ -151,11 +185,14 @@ impl From<GitlabMergeRequest> for GitlabItem {
     }
 }
 
+/// An [`ItemSource`] that queries a GitLab instance.
 pub struct GitlabQuery {
+    /// The GitLab client, or the initialization error if construction failed.
     client: Result<Gitlab, gitlab::GitlabError>,
 }
 
 impl GitlabQuery {
+    /// Create a new `GitlabQuery` for the given optional `host` and `token`.
     #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let actual_host = host.unwrap_or_else(|| "gitlab.com".into());
@@ -225,6 +262,7 @@ impl GitlabQuery {
         Ok(result.into_iter().map(GitlabItem::from).collect())
     }
 
+    /// Query all issues and merge requests for the authenticated user.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Gitlab, filters: &[Filter]) -> Result<Vec<GitlabItem>, ItemError> {
         let mut items = Vec::new();
@@ -266,6 +304,7 @@ impl GitlabQuery {
         Ok(items)
     }
 
+    /// Query issues and merge requests across multiple project paths.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Gitlab,

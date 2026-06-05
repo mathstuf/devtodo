@@ -18,21 +18,37 @@ use thiserror::Error;
 use uuid::Uuid;
 use vobject::{Component, Property};
 
+/// Errors that can occur when reading or writing `.ics` todo files.
 #[derive(Debug, Error)]
 pub enum TodoError {
+    /// Failed to read a `.ics` file from disk.
     #[error("failed to read file {}", path.display())]
-    ReadFile { path: PathBuf, source: io::Error },
+    ReadFile {
+        /// Path of the file that could not be read.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
+    /// Failed to write a `.ics` file to disk.
     #[error("failed to write file {}", path.display())]
-    WriteFile { path: PathBuf, source: io::Error },
+    WriteFile {
+        /// Path of the file that could not be written.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
+    /// Failed to parse a vObject component from the file contents.
     #[error("failed to parse vobject component")]
     ParseComponent {
         #[from]
+        /// The underlying parse error.
         source: vobject::error::VObjectError,
     },
 }
 
 impl TodoError {
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadFile` error.
     const fn read_file(path: PathBuf, source: io::Error) -> Self {
         Self::ReadFile {
             path,
@@ -40,6 +56,7 @@ impl TodoError {
         }
     }
 
+    /// Construct a `WriteFile` error.
     const fn write_file(path: PathBuf, source: io::Error) -> Self {
         Self::WriteFile {
             path,
@@ -48,25 +65,36 @@ impl TodoError {
     }
 }
 
+/// Convenience alias for `Result<T, TodoError>`.
 type TodoResult<T> = Result<T, TodoError>;
 
+/// An on-disk `.ics` file paired with the parsed [`TodoItem`] it contains.
 pub struct TodoFile {
+    /// Path to the `.ics` file on disk.
     path: PathBuf,
+    /// The raw vObject component tree read from (or written to) `path`.
     component: Component,
+    /// The parsed todo item derived from the VTODO subcomponent.
     pub item: TodoItem,
 }
 
+/// PRODID prefix written into every VCALENDAR component we create.
 static PRODID_PREFIX: &str = concat!("-//IDN benboeckel.net//", env!("CARGO_PKG_NAME"), "/",);
+/// PRODID suffix appended after the prefix.
 static PRODID_SUFFIX: &str = concat!(env!("CARGO_PKG_VERSION"), " vobject", "//EN",);
 
+/// Whether a [`TodoFile`] needs to be flushed back to disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Updated {
+    /// The item was modified and the file must be re-written.
     Yes,
+    /// Nothing changed; no write is needed.
     No,
 }
 
 impl TodoFile {
     #[expect(clippy::single_call_fn, reason = "function size")]
+    /// Create a new `.ics` file in `dir` for the given `item` and return a [`TodoFile`] for it.
     pub fn from_item<P>(dir: P, item: TodoItem) -> TodoResult<Self>
     where
         P: AsRef<Path>,
@@ -75,6 +103,7 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "monomorphization")]
+    /// Monomorphized implementation of [`from_item`](Self::from_item).
     fn from_item_impl(dir: &Path, item: TodoItem) -> TodoResult<Self> {
         let path = dir.join(format!("{}.ics", item.uid.0));
         let subcomponent = item.vtodo();
@@ -96,6 +125,7 @@ impl TodoFile {
         })
     }
 
+    /// Flush any pending changes back to the `.ics` file on disk.
     pub fn write(&mut self) -> TodoResult<()> {
         if self.sync() == Updated::Yes {
             fs::write(
@@ -108,6 +138,7 @@ impl TodoFile {
         Ok(())
     }
 
+    /// Propagate in-memory changes to the vObject component tree; returns whether anything changed.
     fn sync(&mut self) -> Updated {
         if self.item.updated {
             let vtodo = Self::extract_component_as_mut(&mut self.component)
@@ -122,6 +153,7 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Read a `.ics` file at `path`; returns `None` if the file is not a devtodo component.
     pub fn from_path<P>(path: P) -> TodoResult<Option<Self>>
     where
         P: Into<PathBuf>,
@@ -130,6 +162,7 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "monomorphization")]
+    /// Monomorphized implementation of [`from_path`](Self::from_path).
     fn from_path_impl(path: PathBuf) -> TodoResult<Option<Self>> {
         let contents =
             fs::read_to_string(&path).map_err(|err| TodoError::read_file(path.clone(), err))?;
@@ -146,6 +179,7 @@ impl TodoFile {
             }))
     }
 
+    /// Return `Some(())` iff `component` was written by this program (correct PRODID, one subcomponent).
     fn is_our_component(component: &Component) -> Option<()> {
         let prodid = component.get_only("PRODID")?;
         if !prodid.value_as_string().starts_with(PRODID_PREFIX) {
@@ -159,6 +193,7 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "function size")]
+    /// Extract the VTODO subcomponent as a mutable reference, or `None` if this is not our file.
     fn extract_component_as_mut(component: &mut Component) -> Option<&mut Component> {
         Self::is_our_component(component)?;
         let subcomponent = component.subcomponents.get_mut(0)?;
@@ -170,6 +205,7 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience accessor")]
+    /// Extract the VTODO subcomponent as a shared reference, or `None` if this is not our file.
     fn extract_component_as_ref(component: &Component) -> Option<&Component> {
         Self::is_our_component(component)?;
         let subcomponent = component.subcomponents.first()?;
@@ -181,16 +217,22 @@ impl TodoFile {
     }
 
     #[expect(clippy::single_call_fn, reason = "convenience accessor")]
+    /// Clone and return the VTODO subcomponent, or `None` if this is not our file.
     fn extract_component(component: &Component) -> Option<Component> {
         Self::extract_component_as_ref(component).cloned()
     }
 }
 
+/// The completion status of a todo item, corresponding to the iCalendar `STATUS` property.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
+    /// The item has not been started (`NEEDS-ACTION`).
     NeedsAction,
+    /// The item has been fully completed (`COMPLETED`).
     Completed,
+    /// The item is actively being worked on (`IN-PROCESS`).
     InProcess,
+    /// The item was cancelled and will not be completed (`CANCELLED`).
     Cancelled,
 }
 
@@ -205,16 +247,24 @@ impl AsRef<str> for TodoStatus {
     }
 }
 
+/// The type of item retrieved from a code-hosting service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoKind {
+    /// An issue (not personally assigned).
     Issue,
+    /// An issue that is assigned to the authenticated user.
     AssignedIssue,
+    /// A pull/merge request (not personally assigned).
     PullRequest,
+    /// A pull/merge request assigned to the authenticated user.
     AssignedPullRequest,
+    /// A pull/merge request for which a review has been requested.
     ReviewRequested,
+    /// A generic todo item (e.g. from a Forgejo task list).
     Todo,
 }
 
+/// All [`TodoKind`] variants in order, used when searching CATEGORIES for a matching kind.
 static ALL_TODO_KINDS: &[TodoKind] = &[
     TodoKind::Issue,
     TodoKind::AssignedIssue,
@@ -225,6 +275,7 @@ static ALL_TODO_KINDS: &[TodoKind] = &[
 ];
 
 impl TodoKind {
+    /// Return the iCalendar CATEGORIES string used to represent this kind.
     const fn category(self) -> &'static str {
         match self {
             Self::Issue => "issue",
@@ -243,16 +294,22 @@ impl AsRef<str> for TodoKind {
     }
 }
 
+/// Format string for iCalendar date-time values (UTC, no fractional seconds).
 pub const DATE_TIME_FMT: &str = "%Y%m%dT%H%M%SZ";
+/// Format string for iCalendar date-only values.
 pub const DATE_FMT: &str = "%Y%m%d";
 
+/// A due date that may carry either a date or a full date-time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Due {
+    /// A date-only due value (from the iCalendar `DUE` property without a time component).
     Date(NaiveDate),
+    /// A full UTC date-time due value.
     DateTime(DateTime<Utc>),
 }
 
 impl Due {
+    /// Parse a `Due` from an iCalendar date or date-time string; returns `None` on failure.
     fn from_str(str: &str) -> Option<Self> {
         Some(match NaiveDateTime::parse_from_str(str, DATE_TIME_FMT) {
             Ok(dt) => Self::DateTime(Utc.from_utc_datetime(&dt)),
@@ -274,6 +331,7 @@ impl fmt::Display for Due {
     }
 }
 
+/// A unique identifier for a todo item, stored as the iCalendar `UID` property.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Uid(String);
 
@@ -299,37 +357,52 @@ impl Default for Uid {
     }
 }
 
+/// A single todo item derived from a code-hosting service item.
 #[derive(Builder)]
 pub struct TodoItem {
+    /// Unique identifier for this item (iCalendar UID).
     #[builder(default)]
     #[builder(setter(skip))]
     uid: Uid,
+    /// The kind of upstream item this represents.
     kind: TodoKind,
+    /// When this item was first created.
     #[builder(default = "Utc::now()")]
     created: DateTime<Utc>,
+    /// Optional due date, sourced from a milestone or similar.
     #[builder(default)]
     #[builder(setter(strip_option))]
     due: Option<Due>,
+    /// Optional start date.
     #[builder(default)]
     #[builder(setter(strip_option))]
     start: Option<Due>,
+    /// Current completion status.
     status: TodoStatus,
+    /// Canonical URL of the upstream item.
     url: String,
+    /// Short title / summary of the item.
     summary: String,
+    /// Long-form body text.
     #[builder(default)]
     description: String,
+    /// Labels applied to the upstream item.
     #[builder(default)]
     labels: Vec<String>,
+    /// Milestone title associated with the upstream item, if any.
     #[builder(default)]
     #[builder(setter(strip_option))]
     milestone: Option<String>,
+    /// Whether the upstream pull request is in draft state.
     #[builder(default)]
     draft: bool,
 
+    /// Timestamp of the most recent modification (iCalendar LAST-MODIFIED).
     #[builder(default = "Utc::now()")]
     #[builder(setter(skip))]
     last_modified: DateTime<Utc>,
 
+    /// Whether this item has unsaved in-memory changes that need to be flushed to disk.
     #[builder(default = "false")]
     #[builder(setter(skip))]
     updated: bool,
@@ -341,6 +414,7 @@ impl TodoItem {
         reason = "call counts depend on feature selection"
     )]
     #[allow(clippy::single_call_fn, reason = "public builder API")]
+    /// Return a fresh [`TodoItemBuilder`] for constructing a new item.
     pub fn builder() -> TodoItemBuilder {
         TodoItemBuilder::default()
     }
@@ -354,6 +428,7 @@ impl TodoItem {
         }
     }
 
+    /// Update the due date, marking the item as modified if it changed.
     pub fn set_due(&mut self, new_due: Due) {
         if self.due.as_ref().is_none_or(|&due| due != new_due) {
             self.due = Some(new_due);
@@ -362,6 +437,7 @@ impl TodoItem {
         }
     }
 
+    /// Update the completion status, marking the item as modified if it changed.
     pub fn set_status(&mut self, new_status: TodoStatus) {
         if self.status != new_status {
             self.status = new_status;
@@ -370,6 +446,7 @@ impl TodoItem {
         }
     }
 
+    /// Update the summary, marking the item as modified if it changed.
     pub fn set_summary<S>(&mut self, new_summary: S)
     where
         S: Into<String>,
@@ -382,6 +459,10 @@ impl TodoItem {
         }
     }
 
+    /// Update the description, marking the item as modified if it changed.
+    ///
+    /// Carriage-return characters are stripped because they are lost when the value is round-tripped
+    /// through iCalendar format.
     pub fn set_description<D>(&mut self, new_description: D)
     where
         D: Into<String>,
@@ -396,6 +477,7 @@ impl TodoItem {
         }
     }
 
+    /// Replace the label list, marking the item as modified if it changed.
     pub fn set_labels(&mut self, new_labels: Vec<String>) {
         if self.labels != new_labels {
             self.labels = new_labels;
@@ -404,6 +486,7 @@ impl TodoItem {
         }
     }
 
+    /// Update the milestone, marking the item as modified if it changed.
     pub fn set_milestone<M>(&mut self, new_milestone: Option<M>)
     where
         M: Into<String>,
@@ -416,6 +499,7 @@ impl TodoItem {
         }
     }
 
+    /// Update the draft flag, marking the item as modified if it changed.
     pub fn set_draft(&mut self, new_draft: bool) {
         if self.draft != new_draft {
             self.draft = new_draft;
@@ -424,11 +508,14 @@ impl TodoItem {
         }
     }
 
+    /// Return the canonical URL of the upstream item.
     pub fn url(&self) -> &str {
         &self.url
     }
 
     #[expect(clippy::single_call_fn, reason = "function size")]
+    /// Attempt to construct a [`TodoItem`] from a parsed VTODO `component`; returns `None` if any
+    /// required property is missing or cannot be parsed.
     fn from_component(component: &Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
         let (kind, labels, milestone) = {
@@ -507,6 +594,7 @@ impl TodoItem {
         })
     }
 
+    /// Serialise this item into a new VTODO [`Component`].
     fn vtodo(&self) -> Component {
         let mut component = Component::new("VTODO");
 
@@ -529,6 +617,7 @@ impl TodoItem {
         component
     }
 
+    /// Write the current field values from this item into an existing VTODO `component`.
     fn update_component(&self, component: &mut Component) {
         component.set(Property::new("SUMMARY", &self.summary));
         component.set(Property::new("DESCRIPTION", &self.description));
