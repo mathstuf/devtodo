@@ -16,7 +16,7 @@ use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
 #[derive(Debug, Deserialize)]
-struct GitlabUser {}
+struct GitlabUser;
 
 #[derive(Debug, Deserialize)]
 struct GitlabMilestone {
