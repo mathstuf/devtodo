@@ -48,7 +48,7 @@ gql_query!(RepositoryIssues, "RepositoryIssues");
 gql_query!(RepositoryPullRequests, "RepositoryPullRequests");
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RateLimitInfo {
+pub struct RateLimitInfo {
     pub cost: i64,
     pub limit: i64,
     pub remaining: i64,
