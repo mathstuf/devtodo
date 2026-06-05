@@ -199,11 +199,11 @@ impl GithubQuery {
     }
 
     /// Check the rate limiting for a query.
-    fn check_rate_limits<R>(rate_limit: &Option<R>, name: &str)
+    fn check_rate_limits<R>(rate_limit: Option<&R>, name: &str)
     where
         R: Into<queries::RateLimitInfo> + Clone,
     {
-        if let Some(info) = rate_limit.as_ref() {
+        if let Some(info) = rate_limit {
             info.clone().into().inspect(name);
         }
     }
@@ -251,7 +251,7 @@ impl GithubQuery {
                 })?;
 
             Self::check_rate_limits(
-                &rsp.rate_limit_info.rate_limit,
+                rsp.rate_limit_info.rate_limit.as_ref(),
                 queries::ViewerIssues::name(),
             );
             let (gql_issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
@@ -301,7 +301,7 @@ impl GithubQuery {
                 })?;
 
             Self::check_rate_limits(
-                &rsp.rate_limit_info.rate_limit,
+                rsp.rate_limit_info.rate_limit.as_ref(),
                 queries::ViewerPullRequests::name(),
             );
             let (gql_prs, page_info) = (
@@ -385,7 +385,7 @@ impl GithubQuery {
                     })?;
 
                 Self::check_rate_limits(
-                    &rsp.rate_limit_info.rate_limit,
+                    rsp.rate_limit_info.rate_limit.as_ref(),
                     queries::RepositoryIssues::name(),
                 );
 
@@ -440,7 +440,7 @@ impl GithubQuery {
                     })?;
 
                 Self::check_rate_limits(
-                    &rsp.rate_limit_info.rate_limit,
+                    rsp.rate_limit_info.rate_limit.as_ref(),
                     queries::RepositoryPullRequests::name(),
                 );
 
