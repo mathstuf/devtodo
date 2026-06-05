@@ -166,6 +166,35 @@ impl GitlabQuery {
         }
     }
 
+    /// Query GitLab issues for a given scope.
+    fn query_issues_scope(
+        client: &Gitlab,
+        scope: issues::IssueScope,
+        filters: &[Filter],
+        query_context: &str,
+    ) -> Result<Vec<GitlabItem>, ItemError> {
+        let labels = filters.iter().map(|filter| {
+            match filter {
+                Filter::Label(label) => label.as_str(),
+            }
+        });
+        let endpoint = issues::Issues::builder()
+            .scope(scope)
+            .state(issues::IssueState::Opened)
+            .labels(labels)
+            .build()
+            .map_err(|err| {
+                ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
+            })?;
+        let result: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
+            .query(client)
+            .map_err(|err| {
+                error!("failed to query {query_context}: {err:?}");
+                ItemError::query_error("gitlab", format!("failed to query {query_context}: {err}"))
+            })?;
+        Ok(result.into_iter().map(GitlabItem::from).collect())
+    }
+
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Gitlab, filters: &[Filter]) -> Result<Vec<GitlabItem>, ItemError> {
         let mut items = Vec::new();
@@ -175,53 +204,18 @@ impl GitlabQuery {
             }
         });
 
-        // Query issues assigned to the API user.
-        {
-            let endpoint = issues::Issues::builder()
-                .scope(issues::IssueScope::AssignedToMe)
-                .state(issues::IssueState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
-                })?;
-
-            let assigned_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query assigned issues: {err:?}");
-                    ItemError::query_error(
-                        "gitlab",
-                        format!("failed to query assigned issues: {err}"),
-                    )
-                })?;
-
-            items.extend(assigned_issues.into_iter().map(GitlabItem::from));
-        };
-
-        // Query issues created by the API user.
-        {
-            let endpoint = issues::Issues::builder()
-                .scope(issues::IssueScope::CreatedByMe)
-                .state(issues::IssueState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
-                })?;
-
-            let created_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query created issues: {err:?}");
-                    ItemError::query_error(
-                        "gitlab",
-                        format!("failed to query created issues: {err}"),
-                    )
-                })?;
-
-            items.extend(created_issues.into_iter().map(GitlabItem::from));
-        };
+        items.extend(Self::query_issues_scope(
+            client,
+            issues::IssueScope::AssignedToMe,
+            filters,
+            "assigned issues",
+        )?);
+        items.extend(Self::query_issues_scope(
+            client,
+            issues::IssueScope::CreatedByMe,
+            filters,
+            "created issues",
+        )?);
 
         // Query merge requests assigned to the API user.
         {
