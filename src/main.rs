@@ -61,7 +61,7 @@ enum SetupError {
         /// Path of the config file that could not be parsed.
         path: PathBuf,
         /// The underlying parse error.
-        source: serde_saphyr::Error,
+        source: Box<serde_saphyr::Error>,
     },
     #[error("log error")]
     /// Setting up the logging backend failed.
@@ -144,10 +144,10 @@ impl SetupError {
 
     #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     /// Construct a `ParseConfig` error.
-    const fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
+    fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
             path,
-            source,
+            source: Box::new(source),
         }
     }
 
