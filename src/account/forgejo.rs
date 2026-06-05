@@ -19,19 +19,30 @@ use url::Url;
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
+    /// Optional due date.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status.
     status: TodoStatus,
+    /// Canonical URL of the item on Forgejo.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title, if any.
     milestone: Option<String>,
+    /// Whether this is a draft pull request.
     draft: bool,
 }
 
 impl ForgejoItem {
+    /// Construct a [`ForgejoItem`] from a raw Forgejo `Issue`, treating it as an issue or PR.
     fn from_issue(issue: Issue, is_pull_request: bool) -> Self {
         let kind = if is_pull_request {
             TodoKind::PullRequest
@@ -43,8 +54,7 @@ impl ForgejoItem {
         let has_assignees = issue
             .assignees
             .as_ref()
-            .map(|a| !a.is_empty())
-            .unwrap_or(false);
+            .is_some_and(|assignees| !assignees.is_empty());
 
         let status = match state {
             StateType::Closed => {
@@ -79,23 +89,30 @@ impl ForgejoItem {
         let due = issue
             .milestone
             .as_ref()
-            .and_then(|m| m.due_on.as_ref())
+            .and_then(|milestone| milestone.due_on.as_ref())
             .map(|dt| {
                 let date = dt.date();
-                NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32)
-                    .expect("valid date from API")
+                NaiveDate::from_ymd_opt(
+                    date.year(),
+                    u8::from(date.month()).into(),
+                    date.day().into(),
+                )
+                .expect("valid date from API")
             })
             .map(Due::Date);
 
         // Extract milestone title
-        let milestone = issue.milestone.as_ref().and_then(|m| m.title.clone());
+        let milestone = issue
+            .milestone
+            .as_ref()
+            .and_then(|milestone| milestone.title.clone());
 
         // Extract labels from issue
         let labels = issue
             .labels
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|l| l.name)
+            .filter_map(|label| label.name)
             .collect();
 
         // Extract draft status from pull request metadata
@@ -111,7 +128,10 @@ impl ForgejoItem {
             description: issue.body.unwrap_or_default(),
             kind,
             status,
-            url: issue.html_url.map(|u| u.to_string()).unwrap_or_default(),
+            url: issue
+                .html_url
+                .map(|url| url.to_string())
+                .unwrap_or_default(),
             labels,
             milestone,
             draft,
@@ -119,25 +139,31 @@ impl ForgejoItem {
     }
 }
 
+/// An [`ItemSource`] that queries a Forgejo instance.
 pub struct ForgejoQuery {
+    /// The Forgejo client, or the initialization error if construction failed.
     client: Result<Forgejo, forgejo_api::ForgejoError>,
 }
 
 impl ForgejoQuery {
-    pub fn new(host: Option<String>, token: String) -> Self {
-        let host = host.unwrap_or_else(|| "codeberg.org".into());
-        let url = Url::parse(&format!("https://{host}")).unwrap_or_else(|_| {
+    /// Create a new `ForgejoQuery` for the given optional `host` and API `token`.
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
+    pub fn new(host: Option<String>, token: &str) -> Self {
+        let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
+        let url = Url::parse(&format!("https://{actual_host}")).unwrap_or_else(|_| {
             // Fallback if the host is malformed
-            Url::parse("https://codeberg.org").unwrap()
+            Url::parse("https://codeberg.org").expect("codeberg.org is a valid URL")
         });
 
-        let client = Forgejo::new(Auth::Token(&token), url);
+        let client = Forgejo::new(Auth::Token(token), url);
 
-        ForgejoQuery {
+        Self {
             client,
         }
     }
 
+    /// Query all issues and pull requests assigned to or created by the authenticated user.
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_user(client: &Forgejo, filters: &[Filter]) -> Result<Vec<ForgejoItem>, ItemError> {
         let mut items = Vec::new();
 
@@ -145,9 +171,9 @@ impl ForgejoQuery {
         let labels: Option<String> = {
             let label_list: Vec<&str> = filters
                 .iter()
-                .map(|f| {
-                    match f {
-                        Filter::Label(l) => l.as_str(),
+                .map(|filter| {
+                    match filter {
+                        Filter::Label(label) => label.as_str(),
                     }
                 })
                 .collect();
@@ -170,10 +196,7 @@ impl ForgejoQuery {
 
             let (_, assigned_issues) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query assigned issues: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query assigned issues: {err}"),
-                }
+                ItemError::query_error("forgejo", format!("failed to query assigned issues: {err}"))
             })?;
 
             items.extend(
@@ -181,7 +204,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, false)),
             );
-        }
+        };
 
         // Query issues created by the API user.
         {
@@ -195,10 +218,7 @@ impl ForgejoQuery {
 
             let (_, created_issues) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query created issues: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query created issues: {err}"),
-                }
+                ItemError::query_error("forgejo", format!("failed to query created issues: {err}"))
             })?;
 
             items.extend(
@@ -206,7 +226,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, false)),
             );
-        }
+        };
 
         // Query pull requests assigned to the API user.
         {
@@ -220,10 +240,10 @@ impl ForgejoQuery {
 
             let (_, assigned_prs) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query assigned pull requests: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query assigned pull requests: {err}"),
-                }
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to query assigned pull requests: {err}"),
+                )
             })?;
 
             items.extend(
@@ -231,7 +251,7 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, true)),
             );
-        }
+        };
 
         // Query pull requests created by the API user.
         {
@@ -239,16 +259,16 @@ impl ForgejoQuery {
                 created: Some(true),
                 state: Some(IssueSearchIssuesQueryState::Open),
                 r#type: Some(IssueSearchIssuesQueryType::Pulls),
-                labels: labels.clone(),
+                labels,
                 ..Default::default()
             };
 
             let (_, created_prs) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query created pull requests: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query created pull requests: {err}"),
-                }
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to query created pull requests: {err}"),
+                )
             })?;
 
             items.extend(
@@ -256,11 +276,13 @@ impl ForgejoQuery {
                     .into_iter()
                     .map(|i| ForgejoItem::from_issue(i, true)),
             );
-        }
+        };
 
         Ok(items)
     }
 
+    /// Query issues and pull requests for a list of `owner/repo` project paths.
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Forgejo,
         project_paths: &[String],
@@ -276,9 +298,9 @@ impl ForgejoQuery {
         let labels: Option<String> = {
             let label_list: Vec<&str> = filters
                 .iter()
-                .map(|f| {
-                    match f {
-                        Filter::Label(l) => l.as_str(),
+                .map(|filter| {
+                    match filter {
+                        Filter::Label(label) => label.as_str(),
                     }
                 })
                 .collect();
@@ -291,12 +313,10 @@ impl ForgejoQuery {
 
         for project_path in project_paths {
             // Parse owner/repo from project path
-            let parts: Vec<&str> = project_path.splitn(2, '/').collect();
-            if parts.len() != 2 {
+            let Some((owner, repo)) = project_path.split_once('/') else {
                 warn!("invalid project path (expected owner/repo): {project_path}");
                 continue;
-            }
-            let (owner, repo) = (parts[0], parts[1]);
+            };
 
             // Query project issues
             {
@@ -312,12 +332,10 @@ impl ForgejoQuery {
                     .send()
                     .map_err(|err| {
                         error!("failed to query project {project_path} issues: {err:?}");
-                        ItemError::QueryError {
-                            service: "forgejo",
-                            message: format!(
-                                "failed to query project {project_path} issues: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "forgejo",
+                            format!("failed to query project {project_path} issues: {err}"),
+                        )
                     })?;
 
                 items.extend(
@@ -325,7 +343,7 @@ impl ForgejoQuery {
                         .into_iter()
                         .map(|i| ForgejoItem::from_issue(i, false)),
                 );
-            }
+            };
 
             // Query project pull requests
             {
@@ -341,12 +359,10 @@ impl ForgejoQuery {
                     .send()
                     .map_err(|err| {
                         error!("failed to query project {project_path} pull requests: {err:?}");
-                        ItemError::QueryError {
-                            service: "forgejo",
-                            message: format!(
-                                "failed to query project {project_path} pull requests: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "forgejo",
+                            format!("failed to query project {project_path} pull requests: {err}"),
+                        )
                     })?;
 
                 items.extend(
@@ -415,9 +431,7 @@ impl ItemSource for ForgejoQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

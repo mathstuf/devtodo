@@ -4,6 +4,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![expect(clippy::pub_use, reason = "Construct a prelude module")]
+
 pub use std::error::Error;
 
 pub use crate::account::ItemError;

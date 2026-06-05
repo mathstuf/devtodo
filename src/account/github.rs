@@ -6,40 +6,59 @@
 
 use std::cell::{LazyCell, OnceCell};
 
-use graphql_client::GraphQLQuery;
+use graphql_client::GraphQLQuery as _;
 use log::{error, warn};
 
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// Low-level HTTP client for the GitHub GraphQL API.
 mod client;
+/// GraphQL query definitions and associated helpers.
 mod queries;
 
+/// Connection parameters for a GitHub instance.
 struct ConnInfo {
+    /// The API hostname (e.g. `"api.github.com"` or a GHES hostname).
     host: String,
+    /// The personal access token used to authenticate requests.
     token: String,
 }
 
+/// An [`ItemSource`] that queries a GitHub instance.
 pub struct GithubQuery {
+    /// Lazily-initialized GitHub client; holds the construction result.
     client: LazyCell<
         client::GithubResult<client::Github>,
         Box<dyn Fn() -> client::GithubResult<client::Github>>,
     >,
+    /// Stores the unit value once an initialization error has been logged.
     init_error_cell: OnceCell<()>,
 }
 
+/// A single item retrieved from the GitHub API, prior to conversion into a [`TodoItem`].
 struct GithubItem {
+    /// Due date derived from the item's milestone, if any.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status of the item.
     status: TodoStatus,
+    /// Canonical URL of the item on GitHub.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title associated with the item, if any.
     milestone: Option<String>,
+    /// Whether this is a draft pull request.
     draft: bool,
 }
 
+/// Implement `add_filter` for a GraphQL issue-filter type.
 macro_rules! impl_issue_filter {
     ($type:path) => {
         impl $type {
@@ -56,6 +75,7 @@ macro_rules! impl_issue_filter {
 
 impl_issue_filter!(queries::viewer_issues::IssueFilters);
 
+/// Implement `From<$type> for GithubItem` for a GraphQL issue response type.
 macro_rules! impl_issue {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
@@ -63,9 +83,12 @@ macro_rules! impl_issue {
                 let due = issue
                     .milestone
                     .as_ref()
-                    .and_then(|m| m.due_on)
+                    .and_then(|milestone| milestone.due_on)
                     .map(Due::DateTime);
-                let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
+                let milestone = issue
+                    .milestone
+                    .as_ref()
+                    .map(|milestone| milestone.title.clone());
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::Issue;
                 let status = match issue.state {
@@ -74,7 +97,7 @@ macro_rules! impl_issue {
                         if issue
                             .assignees
                             .assignees
-                            .map(|v| v.is_empty())
+                            .map(|assignees| assignees.is_empty())
                             .unwrap_or(true)
                         {
                             TodoStatus::NeedsAction
@@ -89,11 +112,11 @@ macro_rules! impl_issue {
                 };
                 let labels = issue
                     .labels
-                    .and_then(|l| l.labels)
+                    .and_then(|labels| labels.labels)
                     .unwrap_or_default()
                     .into_iter()
                     .flatten()
-                    .map(|l| l.name)
+                    .map(|label| label.name)
                     .collect();
 
                 Self {
@@ -121,6 +144,7 @@ impl_issue!(
     queries::repository_issues::IssueState
 );
 
+/// Implement `From<$type> for GithubItem` for a GraphQL pull-request response type.
 macro_rules! impl_pull_request {
     ($type:path, $state:path) => {
         impl From<$type> for GithubItem {
@@ -128,9 +152,12 @@ macro_rules! impl_pull_request {
                 let due = pr
                     .milestone
                     .as_ref()
-                    .and_then(|m| m.due_on)
+                    .and_then(|milestone| milestone.due_on)
                     .map(Due::DateTime);
-                let milestone = pr.milestone.as_ref().map(|m| m.title.clone());
+                let milestone = pr
+                    .milestone
+                    .as_ref()
+                    .map(|milestone| milestone.title.clone());
                 let draft = pr.is_draft;
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::PullRequest;
@@ -138,7 +165,12 @@ macro_rules! impl_pull_request {
                     <$state>::CLOSED => TodoStatus::Cancelled,
                     <$state>::MERGED => TodoStatus::Completed,
                     <$state>::OPEN => {
-                        if pr.assignees.assignees.map(|v| v.is_empty()).unwrap_or(true) {
+                        if pr
+                            .assignees
+                            .assignees
+                            .map(|assignees| assignees.is_empty())
+                            .unwrap_or(true)
+                        {
                             TodoStatus::NeedsAction
                         } else {
                             TodoStatus::InProcess
@@ -151,11 +183,11 @@ macro_rules! impl_pull_request {
                 };
                 let labels = pr
                     .labels
-                    .and_then(|l| l.labels)
+                    .and_then(|labels| labels.labels)
                     .unwrap_or_default()
                     .into_iter()
                     .flatten()
-                    .map(|l| l.name)
+                    .map(|label| label.name)
                     .collect();
 
                 Self {
@@ -184,12 +216,14 @@ impl_pull_request!(
 );
 
 impl GithubQuery {
+    /// Create a new `GithubQuery` for the given optional `host` and `token`.
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
         let conninfo = ConnInfo {
             host: host.unwrap_or_else(|| "api.github.com".into()),
             token,
         };
-        GithubQuery {
+        Self {
             client: LazyCell::new(Box::new(move || {
                 client::Github::new(&conninfo.host, &conninfo.token)
             })),
@@ -198,16 +232,18 @@ impl GithubQuery {
     }
 
     /// Check the rate limiting for a query.
-    fn check_rate_limits<R>(rate_limit: &Option<R>, name: &str)
+    fn check_rate_limits<R>(rate_limit: Option<&R>, name: &str)
     where
         R: Into<queries::RateLimitInfo> + Clone,
     {
-        if let Some(info) = rate_limit.as_ref() {
+        if let Some(info) = rate_limit {
             info.clone().into().inspect(name);
         }
     }
 
-    fn query_user(
+    /// Query all viewer issues from GitHub, paginating automatically.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_viewer_issues(
         client: &client::Github,
         filters: &[Filter],
     ) -> Result<Vec<GithubItem>, ItemError> {
@@ -227,96 +263,43 @@ impl GithubQuery {
             issue_filters.add_filter(filter);
         }
 
-        let mut input = queries::viewer_issues::Variables {
+        let mut issues_input = queries::viewer_issues::Variables {
             filter_by: issue_filters,
             cursor: None,
         };
 
         let mut items = Vec::new();
 
-        // Query for issue information.
         loop {
-            let query = queries::ViewerIssues::build_query(input.clone());
+            let query = queries::ViewerIssues::build_query(issues_input.clone());
             let rsp = client
                 .send::<queries::ViewerIssues>(&query)
                 .map_err(|err| {
                     error!("failed to send viewer issue query: {err:?}");
-                    let message = format!("failed to send viewer issue query: {err}");
-                    ItemError::QueryError {
-                        service: "github",
-                        message,
-                    }
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send viewer issue query: {err}"),
+                    )
                 })?;
 
             Self::check_rate_limits(
-                &rsp.rate_limit_info.rate_limit,
+                rsp.rate_limit_info.rate_limit.as_ref(),
                 queries::ViewerIssues::name(),
             );
-            let (issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
-            if let Some(issues) = issues {
-                items.extend(issues.into_iter().flatten().map(|issue| issue.into()));
+            let (gql_issues, page_info) = (rsp.viewer.issues.items, rsp.viewer.issues.page_info);
+            if let Some(issues) = gql_issues {
+                items.extend(issues.into_iter().flatten().map(Into::into));
             }
 
             if page_info.has_next_page {
-                assert!(
-                    page_info.end_cursor.is_some(),
-                    "GitHub lied to us and said there is another page, but didn't give us an end \
-                     cursor. Bailing to avoid an infinite loop.",
-                );
-                input.cursor = page_info.end_cursor;
-            } else {
-                break;
-            }
-        }
-
-        let mut input = queries::viewer_pull_requests::Variables {
-            labels: None,
-            cursor: None,
-        };
-        for filter in filters {
-            match filter {
-                Filter::Label(label) => {
-                    input
-                        .labels
-                        .get_or_insert_with(Vec::new)
-                        .push(label.clone())
-                },
-            }
-        }
-
-        // Query for pull requests information.
-        loop {
-            let query = queries::ViewerPullRequests::build_query(input.clone());
-            let rsp = client
-                .send::<queries::ViewerPullRequests>(&query)
-                .map_err(|err| {
-                    error!("failed to send viewer pull request query: {err:?}");
-                    let message = format!("failed to send viewer pull request query: {err}");
-                    ItemError::QueryError {
-                        service: "github",
-                        message,
-                    }
-                })?;
-
-            Self::check_rate_limits(
-                &rsp.rate_limit_info.rate_limit,
-                queries::ViewerPullRequests::name(),
-            );
-            let (prs, page_info) = (
-                rsp.viewer.pull_requests.items,
-                rsp.viewer.pull_requests.page_info,
-            );
-            if let Some(prs) = prs {
-                items.extend(prs.into_iter().flatten().map(|pr| pr.into()));
-            }
-
-            if page_info.has_next_page {
-                assert!(
-                    page_info.end_cursor.is_some(),
-                    "GitHub lied to us and said there is another page, but didn't give us an end \
-                     cursor. Bailing to avoid an infinite loop.",
-                );
-                input.cursor = page_info.end_cursor;
+                if page_info.end_cursor.is_none() {
+                    return Err(ItemError::query_error(
+                        "github",
+                        "GitHub reported another page of issues but provided no end \
+                                  cursor; bailing to avoid an infinite loop.",
+                    ));
+                }
+                issues_input.cursor = page_info.end_cursor;
             } else {
                 break;
             }
@@ -325,15 +308,91 @@ impl GithubQuery {
         Ok(items)
     }
 
-    fn query_projects(
+    /// Query all viewer pull requests from GitHub, paginating automatically.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_viewer_pull_requests(
         client: &client::Github,
-        projects: &[String],
         filters: &[Filter],
     ) -> Result<Vec<GithubItem>, ItemError> {
+        let mut prs_input = queries::viewer_pull_requests::Variables {
+            labels: None,
+            cursor: None,
+        };
+        for filter in filters {
+            match filter {
+                Filter::Label(label) => {
+                    prs_input
+                        .labels
+                        .get_or_insert_with(Vec::new)
+                        .push(label.clone());
+                },
+            }
+        }
+
         let mut items = Vec::new();
 
+        loop {
+            let query = queries::ViewerPullRequests::build_query(prs_input.clone());
+            let rsp = client
+                .send::<queries::ViewerPullRequests>(&query)
+                .map_err(|err| {
+                    error!("failed to send viewer pull request query: {err:?}");
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send viewer pull request query: {err}"),
+                    )
+                })?;
+
+            Self::check_rate_limits(
+                rsp.rate_limit_info.rate_limit.as_ref(),
+                queries::ViewerPullRequests::name(),
+            );
+            let (gql_prs, page_info) = (
+                rsp.viewer.pull_requests.items,
+                rsp.viewer.pull_requests.page_info,
+            );
+            if let Some(prs) = gql_prs {
+                items.extend(prs.into_iter().flatten().map(Into::into));
+            }
+
+            if page_info.has_next_page {
+                if page_info.end_cursor.is_none() {
+                    return Err(ItemError::query_error(
+                        "github",
+                        "GitHub reported another page of pull requests but provided no \
+                                  end cursor; bailing to avoid an infinite loop.",
+                    ));
+                }
+                prs_input.cursor = page_info.end_cursor;
+            } else {
+                break;
+            }
+        }
+
+        Ok(items)
+    }
+
+    /// Query all issues and pull requests for the authenticated user.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_user(
+        client: &client::Github,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
+        let mut items = Self::query_viewer_issues(client, filters)?;
+        items.extend(Self::query_viewer_pull_requests(client, filters)?);
+        Ok(items)
+    }
+
+    /// Query all issues for a single repository, paginating automatically.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_repository_issues(
+        client: &client::Github,
+        owner: &str,
+        name: &str,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
         // Collect labels from filters
-        let labels: Option<Vec<String>> = {
+        let labels = {
             let label_list: Vec<String> = filters
                 .iter()
                 .map(|Filter::Label(label)| label.clone())
@@ -345,123 +404,165 @@ impl GithubQuery {
             }
         };
 
+        let mut issues_input = queries::repository_issues::Variables {
+            owner: owner.into(),
+            name: name.into(),
+            labels,
+            states: Some(vec![queries::repository_issues::IssueState::OPEN]),
+            cursor: None,
+        };
+
+        let mut items = Vec::new();
+
+        loop {
+            let query = queries::RepositoryIssues::build_query(issues_input.clone());
+            let rsp = client
+                .send::<queries::RepositoryIssues>(&query)
+                .map_err(|err| {
+                    error!("failed to send repository issue query for {owner}/{name}: {err:?}");
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send repository issue query for {owner}/{name}: {err}"),
+                    )
+                })?;
+
+            Self::check_rate_limits(
+                rsp.rate_limit_info.rate_limit.as_ref(),
+                queries::RepositoryIssues::name(),
+            );
+
+            if let Some(repo) = rsp.repository {
+                let (gql_issues, page_info) = (repo.issues.items, repo.issues.page_info);
+                if let Some(issues) = gql_issues {
+                    items.extend(issues.into_iter().flatten().map(GithubItem::from));
+                }
+
+                if page_info.has_next_page {
+                    if page_info.end_cursor.is_none() {
+                        return Err(ItemError::query_error(
+                            "github",
+                            "GitHub reported another page of issues but provided no \
+                                      end cursor; bailing to avoid an infinite loop.",
+                        ));
+                    }
+                    issues_input.cursor = page_info.end_cursor;
+                } else {
+                    break;
+                }
+            } else {
+                warn!("repository {owner}/{name} not found or not accessible");
+                break;
+            }
+        }
+
+        Ok(items)
+    }
+
+    /// Query all pull requests for a single repository, paginating automatically.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_repository_pull_requests(
+        client: &client::Github,
+        owner: &str,
+        name: &str,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
+        // Collect labels from filters
+        let labels = {
+            let label_list: Vec<String> = filters
+                .iter()
+                .map(|Filter::Label(label)| label.clone())
+                .collect();
+            if label_list.is_empty() {
+                None
+            } else {
+                Some(label_list)
+            }
+        };
+
+        let mut prs_input = queries::repository_pull_requests::Variables {
+            owner: owner.into(),
+            name: name.into(),
+            labels,
+            states: Some(vec![
+                queries::repository_pull_requests::PullRequestState::OPEN,
+            ]),
+            cursor: None,
+        };
+
+        let mut items = Vec::new();
+
+        loop {
+            let query = queries::RepositoryPullRequests::build_query(prs_input.clone());
+            let rsp = client
+                .send::<queries::RepositoryPullRequests>(&query)
+                .map_err(|err| {
+                    error!(
+                        "failed to send repository pull request query for {owner}/{name}: {err:?}",
+                    );
+                    ItemError::query_error(
+                        "github",
+                        format!(
+                            "failed to send repository pull request query for {owner}/{name}: {err}",
+                        ),
+                    )
+                })?;
+
+            Self::check_rate_limits(
+                rsp.rate_limit_info.rate_limit.as_ref(),
+                queries::RepositoryPullRequests::name(),
+            );
+
+            if let Some(repo) = rsp.repository {
+                let (gql_prs, page_info) = (repo.pull_requests.items, repo.pull_requests.page_info);
+                if let Some(prs) = gql_prs {
+                    items.extend(prs.into_iter().flatten().map(GithubItem::from));
+                }
+
+                if page_info.has_next_page {
+                    if page_info.end_cursor.is_none() {
+                        return Err(ItemError::query_error(
+                            "github",
+                            "GitHub reported another page of pull requests but \
+                                      provided no end cursor; bailing to avoid an infinite \
+                                      loop.",
+                        ));
+                    }
+                    prs_input.cursor = page_info.end_cursor;
+                } else {
+                    break;
+                }
+            } else {
+                // Already warned above for issues query
+                break;
+            }
+        }
+
+        Ok(items)
+    }
+
+    /// Query issues and pull requests across multiple repositories.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_projects(
+        client: &client::Github,
+        projects: &[String],
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
+        let mut items = Vec::new();
+
         for project in projects {
             // Parse "owner/repo" format
-            let (owner, name) = match project.split_once('/') {
-                Some((o, n)) => (o.to_string(), n.to_string()),
-                None => {
-                    error!("invalid project format (expected owner/repo): {project}");
-                    return Err(ItemError::QueryError {
-                        service: "github",
-                        message: format!("invalid project format (expected owner/repo): {project}"),
-                    });
-                },
+            let Some((owner, name)) = project.split_once('/') else {
+                error!("invalid project format (expected owner/repo): {project}");
+                return Err(ItemError::query_error(
+                    "github",
+                    format!("invalid project format (expected owner/repo): {project}"),
+                ));
             };
 
-            // Query for repository issues
-            let mut input = queries::repository_issues::Variables {
-                owner: owner.clone(),
-                name: name.clone(),
-                labels: labels.clone(),
-                states: Some(vec![queries::repository_issues::IssueState::OPEN]),
-                cursor: None,
-            };
-
-            loop {
-                let query = queries::RepositoryIssues::build_query(input.clone());
-                let rsp = client
-                    .send::<queries::RepositoryIssues>(&query)
-                    .map_err(|err| {
-                        error!("failed to send repository issue query for {project}: {err:?}");
-                        let message =
-                            format!("failed to send repository issue query for {project}: {err}");
-                        ItemError::QueryError {
-                            service: "github",
-                            message,
-                        }
-                    })?;
-
-                Self::check_rate_limits(
-                    &rsp.rate_limit_info.rate_limit,
-                    queries::RepositoryIssues::name(),
-                );
-
-                if let Some(repo) = rsp.repository {
-                    let (issues, page_info) = (repo.issues.items, repo.issues.page_info);
-                    if let Some(issues) = issues {
-                        items.extend(issues.into_iter().flatten().map(GithubItem::from));
-                    }
-
-                    if page_info.has_next_page {
-                        assert!(
-                            page_info.end_cursor.is_some(),
-                            "GitHub lied to us and said there is another page, but didn't give \
-                             us an end cursor. Bailing to avoid an infinite loop.",
-                        );
-                        input.cursor = page_info.end_cursor;
-                    } else {
-                        break;
-                    }
-                } else {
-                    warn!("repository {project} not found or not accessible");
-                    break;
-                }
-            }
-
-            // Query for repository pull requests
-            let mut input = queries::repository_pull_requests::Variables {
-                owner: owner.clone(),
-                name: name.clone(),
-                labels: labels.clone(),
-                states: Some(vec![
-                    queries::repository_pull_requests::PullRequestState::OPEN,
-                ]),
-                cursor: None,
-            };
-
-            loop {
-                let query = queries::RepositoryPullRequests::build_query(input.clone());
-                let rsp = client
-                    .send::<queries::RepositoryPullRequests>(&query)
-                    .map_err(|err| {
-                        error!(
-                            "failed to send repository pull request query for {project}: {err:?}",
-                        );
-                        let message = format!(
-                            "failed to send repository pull request query for {project}: {err}",
-                        );
-                        ItemError::QueryError {
-                            service: "github",
-                            message,
-                        }
-                    })?;
-
-                Self::check_rate_limits(
-                    &rsp.rate_limit_info.rate_limit,
-                    queries::RepositoryPullRequests::name(),
-                );
-
-                if let Some(repo) = rsp.repository {
-                    let (prs, page_info) = (repo.pull_requests.items, repo.pull_requests.page_info);
-                    if let Some(prs) = prs {
-                        items.extend(prs.into_iter().flatten().map(GithubItem::from));
-                    }
-
-                    if page_info.has_next_page {
-                        assert!(
-                            page_info.end_cursor.is_some(),
-                            "GitHub lied to us and said there is another page, but didn't give \
-                             us an end cursor. Bailing to avoid an infinite loop.",
-                        );
-                        input.cursor = page_info.end_cursor;
-                    } else {
-                        break;
-                    }
-                } else {
-                    // Already warned above for issues query
-                    break;
-                }
-            }
+            items.extend(Self::query_repository_issues(client, owner, name, filters)?);
+            items.extend(Self::query_repository_pull_requests(
+                client, owner, name, filters,
+            )?);
         }
 
         Ok(items)
@@ -522,9 +623,7 @@ impl ItemSource for GithubQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

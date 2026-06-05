@@ -7,7 +7,7 @@
 //! GitLab integration using the `gitlab` crate (REST API).
 
 use chrono::NaiveDate;
-use gitlab::api::{self, issues, merge_requests, projects, Query};
+use gitlab::api::{self, issues, merge_requests, projects, Query as _};
 use gitlab::Gitlab;
 use log::{error, warn};
 use serde::Deserialize;
@@ -15,51 +15,85 @@ use serde::Deserialize;
 use crate::account::prelude::*;
 use crate::todo::{Due, TodoKind, TodoStatus};
 
+/// Placeholder for a GitLab user in deserialized API responses.
 #[derive(Debug, Deserialize)]
-struct GitlabUser {}
+struct GitlabUser;
 
+/// A GitLab milestone associated with an issue or merge request.
 #[derive(Debug, Deserialize)]
 struct GitlabMilestone {
+    /// Milestone title.
     title: String,
+    /// Optional due date of the milestone.
     due_date: Option<NaiveDate>,
 }
 
+/// A GitLab issue as returned by the REST API.
 #[derive(Debug, Deserialize)]
 struct GitlabIssue {
+    /// Title of the issue.
     title: String,
+    /// Body text of the issue.
     description: Option<String>,
+    /// Current state (e.g. `"opened"` or `"closed"`).
     state: String,
+    /// Canonical URL of the issue.
     web_url: String,
+    /// Users currently assigned to the issue.
     assignees: Vec<GitlabUser>,
+    /// Optional start date.
     start_date: Option<NaiveDate>,
+    /// Optional due date.
     due_date: Option<NaiveDate>,
+    /// Associated milestone, if any.
     milestone: Option<GitlabMilestone>,
+    /// Labels applied to the issue.
     labels: Vec<String>,
 }
 
+/// A GitLab merge request as returned by the REST API.
 #[derive(Debug, Deserialize)]
 struct GitlabMergeRequest {
+    /// Title of the merge request.
     title: String,
+    /// Body text of the merge request.
     description: Option<String>,
+    /// Current state (`"opened"`, `"closed"`, or `"merged"`).
     state: String,
+    /// Canonical URL of the merge request.
     web_url: String,
+    /// Users currently assigned to the merge request.
     assignees: Vec<GitlabUser>,
+    /// Associated milestone, if any.
     milestone: Option<GitlabMilestone>,
+    /// Labels applied to the merge request.
     labels: Vec<String>,
     #[serde(default)]
+    /// Whether the merge request is a draft.
     draft: bool,
 }
 
+/// A single item retrieved from the GitLab API, prior to conversion into a [`TodoItem`].
 struct GitlabItem {
+    /// Optional start date.
     start: Option<Due>,
+    /// Optional due date.
     due: Option<Due>,
+    /// Short title of the item.
     summary: String,
+    /// Body text of the item.
     description: String,
+    /// The kind of upstream item.
     kind: TodoKind,
+    /// Current completion status.
     status: TodoStatus,
+    /// Canonical URL of the item on GitLab.
     url: String,
+    /// Labels applied to the item.
     labels: Vec<String>,
+    /// Milestone title, if any.
     milestone: Option<String>,
+    /// Whether this is a draft merge request.
     draft: bool,
 }
 
@@ -68,9 +102,12 @@ impl From<GitlabIssue> for GitlabItem {
         let start = issue.start_date.map(Due::Date);
         let due = issue
             .due_date
-            .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
+            .or_else(|| issue.milestone.as_ref()?.due_date)
             .map(Due::Date);
-        let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
+        let milestone = issue
+            .milestone
+            .as_ref()
+            .map(|milestone| milestone.title.clone());
         // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::Issue;
         let status = match issue.state.as_str() {
@@ -108,9 +145,12 @@ impl From<GitlabMergeRequest> for GitlabItem {
         let due = mr
             .milestone
             .as_ref()
-            .and_then(|m| m.due_date)
+            .and_then(|milestone| milestone.due_date)
             .map(Due::Date);
-        let milestone = mr.milestone.as_ref().map(|m| m.title.clone());
+        let milestone = mr
+            .milestone
+            .as_ref()
+            .map(|milestone| milestone.title.clone());
         let draft = mr.draft;
         // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::PullRequest;
@@ -145,166 +185,127 @@ impl From<GitlabMergeRequest> for GitlabItem {
     }
 }
 
+/// An [`ItemSource`] that queries a GitLab instance.
 pub struct GitlabQuery {
+    /// The GitLab client, or the initialization error if construction failed.
     client: Result<Gitlab, gitlab::GitlabError>,
 }
 
 impl GitlabQuery {
+    /// Create a new `GitlabQuery` for the given optional `host` and `token`.
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new(host: Option<String>, token: String) -> Self {
-        let host = host.unwrap_or_else(|| "gitlab.com".into());
-        let client = Gitlab::new(&host, token);
+        let actual_host = host.unwrap_or_else(|| "gitlab.com".into());
+        let client = Gitlab::new(&actual_host, token);
 
-        GitlabQuery {
+        Self {
             client,
         }
     }
 
-    fn query_user(client: &Gitlab, filters: &[Filter]) -> Result<Vec<GitlabItem>, ItemError> {
-        let mut items = Vec::new();
+    /// Query GitLab issues for a given scope.
+    fn query_issues_scope(
+        client: &Gitlab,
+        scope: issues::IssueScope,
+        filters: &[Filter],
+        query_context: &str,
+    ) -> Result<Vec<GitlabItem>, ItemError> {
         let labels = filters.iter().map(|filter| {
             match filter {
                 Filter::Label(label) => label.as_str(),
             }
         });
+        let endpoint = issues::Issues::builder()
+            .scope(scope)
+            .state(issues::IssueState::Opened)
+            .labels(labels)
+            .build()
+            .map_err(|err| {
+                ItemError::query_error("gitlab", format!("failed to build issues query: {err}"))
+            })?;
+        let result: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
+            .query(client)
+            .map_err(|err| {
+                error!("failed to query {query_context}: {err:?}");
+                ItemError::query_error("gitlab", format!("failed to query {query_context}: {err}"))
+            })?;
+        Ok(result.into_iter().map(GitlabItem::from).collect())
+    }
 
-        // Query issues assigned to the API user.
-        {
-            let endpoint = issues::Issues::builder()
-                .scope(issues::IssueScope::AssignedToMe)
-                .state(issues::IssueState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build issues query: {err}"),
-                    }
-                })?;
+    /// Query GitLab merge requests for a given scope.
+    fn query_merge_requests_scope(
+        client: &Gitlab,
+        scope: merge_requests::MergeRequestScope,
+        filters: &[Filter],
+        build_context: &str,
+        query_context: &str,
+    ) -> Result<Vec<GitlabItem>, ItemError> {
+        let labels = filters.iter().map(|filter| {
+            match filter {
+                Filter::Label(label) => label.as_str(),
+            }
+        });
+        let endpoint = merge_requests::MergeRequests::builder()
+            .scope(scope)
+            .state(merge_requests::MergeRequestState::Opened)
+            .labels(labels)
+            .build()
+            .map_err(|err| {
+                ItemError::query_error("gitlab", format!("failed to build {build_context}: {err}"))
+            })?;
+        let result: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
+            .query(client)
+            .map_err(|err| {
+                error!("failed to query {query_context}: {err:?}");
+                ItemError::query_error("gitlab", format!("failed to query {query_context}: {err}"))
+            })?;
+        Ok(result.into_iter().map(GitlabItem::from).collect())
+    }
 
-            let assigned_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query assigned issues: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query assigned issues: {err}"),
-                    }
-                })?;
+    /// Query all issues and merge requests for the authenticated user.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_user(client: &Gitlab, filters: &[Filter]) -> Result<Vec<GitlabItem>, ItemError> {
+        let mut items = Vec::new();
 
-            items.extend(assigned_issues.into_iter().map(GitlabItem::from));
-        }
-
-        // Query issues created by the API user.
-        {
-            let endpoint = issues::Issues::builder()
-                .scope(issues::IssueScope::CreatedByMe)
-                .state(issues::IssueState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build issues query: {err}"),
-                    }
-                })?;
-
-            let created_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query created issues: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query created issues: {err}"),
-                    }
-                })?;
-
-            items.extend(created_issues.into_iter().map(GitlabItem::from));
-        }
-
-        // Query merge requests assigned to the API user.
-        {
-            let endpoint = merge_requests::MergeRequests::builder()
-                .scope(merge_requests::MergeRequestScope::AssignedToMe)
-                .state(merge_requests::MergeRequestState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build merge requests query: {err}"),
-                    }
-                })?;
-
-            let assigned_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query assigned merge requests: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query assigned merge requests: {err}"),
-                    }
-                })?;
-
-            items.extend(assigned_mrs.into_iter().map(GitlabItem::from));
-        }
-
-        // Query merge requests created by the API user.
-        {
-            let endpoint = merge_requests::MergeRequests::builder()
-                .scope(merge_requests::MergeRequestScope::CreatedByMe)
-                .state(merge_requests::MergeRequestState::Opened)
-                .labels(labels.clone())
-                .build()
-                .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build merge requests query: {err}"),
-                    }
-                })?;
-
-            let created_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query created merge requests: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query created merge requests: {err}"),
-                    }
-                })?;
-
-            items.extend(created_mrs.into_iter().map(GitlabItem::from));
-        }
-
-        // Query merge requests where the API user is a reviewer.
-        {
-            let endpoint = merge_requests::MergeRequests::builder()
-                .scope(merge_requests::MergeRequestScope::ReviewsForMe)
-                .labels(labels)
-                .state(merge_requests::MergeRequestState::Opened)
-                .build()
-                .map_err(|err| {
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to build reviewer merge requests query: {err}"),
-                    }
-                })?;
-
-            let reviewer_mrs: Vec<GitlabMergeRequest> = api::paged(endpoint, api::Pagination::All)
-                .query(client)
-                .map_err(|err| {
-                    error!("failed to query merge requests for review: {err:?}");
-                    ItemError::QueryError {
-                        service: "gitlab",
-                        message: format!("failed to query merge requests for review: {err}"),
-                    }
-                })?;
-
-            items.extend(reviewer_mrs.into_iter().map(GitlabItem::from));
-        }
+        items.extend(Self::query_issues_scope(
+            client,
+            issues::IssueScope::AssignedToMe,
+            filters,
+            "assigned issues",
+        )?);
+        items.extend(Self::query_issues_scope(
+            client,
+            issues::IssueScope::CreatedByMe,
+            filters,
+            "created issues",
+        )?);
+        items.extend(Self::query_merge_requests_scope(
+            client,
+            merge_requests::MergeRequestScope::AssignedToMe,
+            filters,
+            "merge requests query",
+            "assigned merge requests",
+        )?);
+        items.extend(Self::query_merge_requests_scope(
+            client,
+            merge_requests::MergeRequestScope::CreatedByMe,
+            filters,
+            "merge requests query",
+            "created merge requests",
+        )?);
+        items.extend(Self::query_merge_requests_scope(
+            client,
+            merge_requests::MergeRequestScope::ReviewsForMe,
+            filters,
+            "reviewer merge requests query",
+            "merge requests for review",
+        )?);
 
         Ok(items)
     }
 
+    /// Query issues and merge requests across multiple project paths.
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
         client: &Gitlab,
         project_paths: &[String],
@@ -326,26 +327,24 @@ impl GitlabQuery {
                     .labels(labels.clone())
                     .build()
                     .map_err(|err| {
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!("failed to build project issues query: {err}"),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to build project issues query: {err}"),
+                        )
                     })?;
 
                 let project_issues: Vec<GitlabIssue> = api::paged(endpoint, api::Pagination::All)
                     .query(client)
                     .map_err(|err| {
                         error!("failed to query project {project_path} issues: {err:?}");
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!(
-                                "failed to query project {project_path} issues: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to query project {project_path} issues: {err}"),
+                        )
                     })?;
 
                 items.extend(project_issues.into_iter().map(GitlabItem::from));
-            }
+            };
 
             // Query project merge requests
             {
@@ -355,10 +354,10 @@ impl GitlabQuery {
                     .labels(labels.clone())
                     .build()
                     .map_err(|err| {
-                        ItemError::QueryError {
-                            service: "gitlab",
-                            message: format!("failed to build project merge requests query: {err}"),
-                        }
+                        ItemError::query_error(
+                            "gitlab",
+                            format!("failed to build project merge requests query: {err}"),
+                        )
                     })?;
 
                 let project_mrs: Vec<GitlabMergeRequest> =
@@ -368,12 +367,12 @@ impl GitlabQuery {
                             error!(
                                 "failed to query project {project_path} merge requests: {err:?}",
                             );
-                            ItemError::QueryError {
-                                service: "gitlab",
-                                message: format!(
+                            ItemError::query_error(
+                                "gitlab",
+                                format!(
                                     "failed to query project {project_path} merge requests: {err}",
                                 ),
-                            }
+                            )
                         })?;
 
                 items.extend(project_mrs.into_iter().map(GitlabItem::from));
@@ -444,9 +443,7 @@ impl ItemSource for GitlabQuery {
                         item.milestone(milestone);
                     }
 
-                    let item = item.build().expect("all item fields should be provided");
-
-                    Some(item)
+                    Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())

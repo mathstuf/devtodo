@@ -8,10 +8,13 @@ use chrono::{self, Utc};
 use graphql_client::GraphQLQuery;
 use log::{log, trace, Level};
 
+/// Alias to satisfy GraphQL API types.
 type DateTime = chrono::DateTime<Utc>;
-#[allow(clippy::upper_case_acronyms)]
+#[expect(clippy::upper_case_acronyms, reason = "Match GraphQL type name")]
+/// Alias to satisfy GraphQL API types.
 type URI = String;
 
+/// Derive [`GraphQLQuery`] for `$name` against the project's schema and query files.
 macro_rules! gql_query_base {
     ($name:ident) => {
         #[derive(GraphQLQuery)]
@@ -26,12 +29,17 @@ macro_rules! gql_query_base {
     };
 }
 
+/// Derive [`GraphQLQuery`] for `$name` and expose a `name()` accessor returning `$query_name`.
 macro_rules! gql_query {
     ($name:ident, $query_name:expr) => {
         gql_query_base!($name);
 
         impl $name {
-            pub(crate) fn name() -> &'static str {
+            #[expect(
+                clippy::single_call_fn,
+                reason = "GraphQL queries can be used just once"
+            )]
+            pub(crate) const fn name() -> &'static str {
                 $query_name
             }
         }
@@ -43,15 +51,21 @@ gql_query!(ViewerPullRequests, "ViewerPullRequests");
 gql_query!(RepositoryIssues, "RepositoryIssues");
 gql_query!(RepositoryPullRequests, "RepositoryPullRequests");
 
+/// Rate-limit information returned alongside every GitHub GraphQL response.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RateLimitInfo {
+pub struct RateLimitInfo {
+    /// The GraphQL point cost of the last query.
     pub cost: i64,
+    /// The total point budget for the authenticated user.
     pub limit: i64,
+    /// The number of points remaining before the rate limit resets.
     pub remaining: i64,
+    /// When the rate-limit window resets.
     pub reset_at: DateTime,
 }
 
 impl RateLimitInfo {
+    /// Log the current rate-limit status at an appropriate log level.
     pub(crate) fn inspect(&self, name: &str) {
         let (level, msg) = match self.remaining {
             0 => {
@@ -63,30 +77,30 @@ impl RateLimitInfo {
                     ),
                 )
             },
-            r if r <= 100 => {
+            limit if limit <= 100 => {
                 (
                     Level::Warn,
                     format!(
-                        "rate limit is nearing: {} / {} left (resets at {})",
-                        r, self.limit, self.reset_at,
+                        "rate limit is nearing: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },
-            r if r <= 1000 => {
+            limit if limit <= 1000 => {
                 (
                     Level::Info,
                     format!(
-                        "rate limit is approaching: {} / {} left (resets at {})",
-                        r, self.limit, self.reset_at,
+                        "rate limit is approaching: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },
-            r => {
+            limit => {
                 (
                     Level::Debug,
                     format!(
-                        "rate limit is OK: {} / {} left (resets at {})",
-                        r, self.limit, self.reset_at,
+                        "rate limit is OK: {limit} / {} left (resets at {})",
+                        self.limit, self.reset_at,
                     ),
                 )
             },
@@ -97,6 +111,7 @@ impl RateLimitInfo {
     }
 }
 
+/// Implement `From<$type> for RateLimitInfo` by mapping standard rate-limit fields.
 macro_rules! impl_into_rate_limit_info {
     ($type:path) => {
         impl From<$type> for RateLimitInfo {

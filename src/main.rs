@@ -13,101 +13,156 @@ use clap::builder::PossibleValuesParser;
 use clap::{self, Arg, ArgAction, Command};
 use directories::ProjectDirs;
 use human_panic::setup_panic;
-use log::*;
+use log::{error, warn, LevelFilter};
 use thiserror::Error;
 
+/// Account backend integrations.
 mod account;
+/// Configuration file parsing.
 mod config;
+/// iCalendar todo-file reading and writing.
 mod todo;
 
-use self::config::Config;
+use self::account::ItemSource;
+use self::config::{Config, SyncTarget};
 use self::todo::TodoFile;
 
+/// Errors that can occur when initialising the logging backend.
 #[derive(Debug, Error)]
 enum LogError {
+    /// The user requested a logging backend that is not recognised.
     #[error("unknown logger: {}", _0)]
     UnknownLogger(String),
 }
 
+/// The active logging backend.
 enum Logger {
+    /// Log output driven by the `RUST_LOG` environment variable.
     Env,
 }
 
+/// Top-level errors that can occur during startup or sync.
 #[derive(Debug, Error)]
 enum SetupError {
     #[error("failed to determine project directories")]
+    /// Could not determine the platform-specific project directory.
     NoProjectDir,
     #[error("failed to read configuration file {}", path.display())]
-    ReadConfig { path: PathBuf, source: io::Error },
-    #[error("failed to parse configuration file {}", path.display())]
-    ParseConfig {
+    /// Reading the configuration file from disk failed.
+    ReadConfig {
+        /// Path of the config file that could not be read.
         path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
+    #[error("failed to parse configuration file {}", path.display())]
+    /// Deserializing the configuration file failed.
+    ParseConfig {
+        /// Path of the config file that could not be parsed.
+        path: PathBuf,
+        /// The underlying parse error.
         source: serde_saphyr::Error,
     },
     #[error("log error")]
+    /// Setting up the logging backend failed.
     LogError {
         #[from]
+        /// The underlying log-setup error.
         source: LogError,
     },
     #[error("account error for {}", name)]
+    /// Connecting to a service account failed.
     Account {
+        /// The name of the account from the configuration file.
         name: String,
+        /// The underlying account-connection error.
         source: account::AccountError,
     },
     #[error("failed to read directory {} for {}", path.display(), name)]
+    /// Reading the todo directory for a sync target failed.
     ReadDir {
+        /// Path of the directory that could not be read.
         path: PathBuf,
+        /// Name of the sync target whose directory could not be read.
         name: String,
+        /// The underlying I/O error.
         source: io::Error,
     },
     #[error("failed to read file for {}", name)]
-    ReadEntry { name: String, source: io::Error },
+    /// Reading a directory entry within a sync target failed.
+    ReadEntry {
+        /// Name of the sync target in which the read failed.
+        name: String,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
     #[error("failed to read todo information from {}", path.display())]
+    /// Parsing a `.ics` file as a todo item failed.
     TodoFile {
+        /// Path of the `.ics` file that could not be parsed.
         path: PathBuf,
+        /// The underlying todo-parse error.
         source: todo::TodoError,
     },
     #[error("no such account {}", name)]
-    NoSuchAccount { name: String },
+    /// A profile referenced an account name that is not in the configuration.
+    NoSuchAccount {
+        /// The missing account name.
+        name: String,
+    },
     #[error(
         "failed to fetch items from the {} account for the {} profile",
         account,
         profile
     )]
+    /// Fetching items from a service account failed.
     FetchItems {
+        /// The account name that was being queried.
         account: String,
+        /// The profile name that triggered the fetch.
         profile: String,
+        /// The underlying fetch error.
         source: account::ItemError,
     },
     #[error("failed to write {} items", errors.len())]
+    /// One or more todo files could not be written back to disk.
     WriteErrors {
+        /// Per-item error messages paired with the underlying [`todo::TodoError`].
         errors: Vec<(String, todo::TodoError)>,
     },
 }
 
 impl SetupError {
-    fn read_config(path: PathBuf, source: io::Error) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadConfig` error.
+    const fn read_config(path: PathBuf, source: io::Error) -> Self {
         Self::ReadConfig {
             path,
             source,
         }
     }
 
-    fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ParseConfig` error.
+    const fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
             path,
             source,
         }
     }
 
-    fn account(name: String, source: account::AccountError) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct an `Account` error.
+    const fn account(name: String, source: account::AccountError) -> Self {
         Self::Account {
             name,
             source,
         }
     }
 
-    fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadDir` error.
+    const fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
         Self::ReadDir {
             path,
             name,
@@ -115,27 +170,35 @@ impl SetupError {
         }
     }
 
-    fn read_entry(name: String, source: io::Error) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `ReadEntry` error.
+    const fn read_entry(name: String, source: io::Error) -> Self {
         Self::ReadEntry {
             name,
             source,
         }
     }
 
-    fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `TodoFile` error.
+    const fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
         Self::TodoFile {
             path,
             source,
         }
     }
 
-    fn no_such_account(name: String) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `NoSuchAccount` error.
+    const fn no_such_account(name: String) -> Self {
         Self::NoSuchAccount {
             name,
         }
     }
 
-    fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `FetchItems` error.
+    const fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
         Self::FetchItems {
             account,
             profile,
@@ -143,23 +206,27 @@ impl SetupError {
         }
     }
 
-    fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
+    /// Construct a `WriteErrors` error.
+    const fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
         Self::WriteErrors {
             errors,
         }
     }
 }
 
+#[expect(clippy::single_call_fn, reason = "function size")]
+/// Read all `.ics` todo files from `dirpath`, skipping non-files and unrecognised entries.
 fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupError> {
     let mut todo_files = Vec::new();
     let dir_iter = fs::read_dir(dirpath)
         .map_err(|err| SetupError::read_dir(dirpath.into(), name.into(), err))?;
-    for entry in dir_iter {
-        let entry = entry.map_err(|err| SetupError::read_entry(name.into(), err))?;
+    for dir_entry in dir_iter {
+        let entry = dir_entry.map_err(|err| SetupError::read_entry(name.into(), err))?;
         let path = entry.path();
 
         // Only look at `.ics` files.
-        if path.extension().map(|ext| ext != "ics").unwrap_or(true) {
+        if path.extension().is_none_or(|ext| ext != "ics") {
             continue;
         }
 
@@ -177,9 +244,8 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
                         Ok(real_md) => real_md.file_type(),
                         Err(err) => {
                             warn!(
-                                "failed to read target metadata for {}: {}; ignoring",
+                                "failed to read target metadata for {}: {err}; ignoring",
                                 path.display(),
-                                err,
                             );
                             continue;
                         },
@@ -188,15 +254,18 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
                     filetype
                 };
                 // Ignore non-files.
+                #[expect(
+                    clippy::filetype_is_file,
+                    reason = "actual files are wanted; symlinks are handled above"
+                )]
                 if !real_filetype.is_file() {
                     continue;
                 }
             },
             Err(err) => {
                 warn!(
-                    "failed to read metadata for {}: {}; ignoring",
+                    "failed to read metadata for {}: {err}; ignoring",
                     path.display(),
-                    err,
                 );
                 continue;
             },
@@ -212,8 +281,10 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
     Ok(todo_files)
 }
 
-fn try_main() -> Result<(), SetupError> {
-    let matches = Command::new("devtodo")
+/// Build the CLI argument parser.
+#[expect(clippy::single_call_fn, reason = "function size")]
+fn build_command() -> clap::Command {
+    Command::new("devtodo")
         .version(clap::crate_version!())
         .author("Ben Boeckel <mathstuf@gmail.com>")
         .about("Query code hosting platforms for todo items to add to a calendar")
@@ -257,7 +328,62 @@ fn try_main() -> Result<(), SetupError> {
                 .value_name("LOGGER")
                 .action(ArgAction::Set),
         )
-        .get_matches();
+}
+
+/// Sync a single target, writing todo items and collecting errors.
+#[expect(clippy::single_call_fn, reason = "function size")]
+fn sync_target(
+    name: &str,
+    target: SyncTarget,
+    accounts: &BTreeMap<String, Box<dyn ItemSource>>,
+    errors: &mut Vec<(String, todo::TodoError)>,
+) -> Result<(), SetupError> {
+    let mut todo_files = read_directory(&target.directory, name)?;
+    let mut url_map = todo_files
+        .iter_mut()
+        .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
+        .collect::<BTreeMap<String, _>>();
+
+    let mut all_new_items = Vec::new();
+    for (profile_name, profile) in target.profiles {
+        let item_source = accounts
+            .get(&profile.account)
+            .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
+        let new_items = item_source
+            .fetch_items(&profile.target, &profile.filters, &mut url_map)
+            .map_err(|err| SetupError::fetch_items(profile.account, profile_name, err))?;
+        all_new_items.extend(new_items);
+    }
+
+    let mut write_item = |url: String, item| {
+        if let Err(err) = item {
+            error!("failed to write todo for {url} in the {name} target: {err:?}");
+            errors.push((
+                format!("failed to write todo for {url} in the {name} target: {err}"),
+                err,
+            ));
+        }
+    };
+
+    for todo_item in all_new_items {
+        let url = todo_item.url().into();
+        write_item(
+            url,
+            TodoFile::from_item(&target.directory, todo_item).map(|_| ()),
+        );
+    }
+    for mut todo_file in todo_files {
+        let url = todo_file.item.url().into();
+        write_item(url, todo_file.write());
+    }
+
+    Ok(())
+}
+
+#[expect(clippy::single_call_fn, reason = "separate concerns")]
+/// Entry point with a `Result` return so that `main` can report errors uniformly.
+fn try_main() -> Result<(), SetupError> {
+    let matches = build_command().get_matches();
 
     let log_level = match matches.get_one::<u8>("DEBUG").copied().unwrap_or(0) {
         0 => LevelFilter::Error,
@@ -287,11 +413,10 @@ fn try_main() -> Result<(), SetupError> {
     let basedirs = ProjectDirs::from("net.benboeckel.devtodo", "", "devtodo")
         .ok_or(SetupError::NoProjectDir)?;
     let config: Config = {
-        let config_path = if let Some(config) = matches.get_one::<String>("CONFIG") {
-            Path::new(config).into()
-        } else {
-            basedirs.config_dir().join("devtodo.yaml")
-        };
+        let config_path = matches.get_one::<String>("CONFIG").map_or_else(
+            || basedirs.config_dir().join("devtodo.yaml"),
+            |config| Path::new(config).into(),
+        );
         let contents = fs::read_to_string(&config_path)
             .map_err(|err| SetupError::read_config(config_path.clone(), err))?;
         serde_saphyr::from_str(&contents)
@@ -325,45 +450,7 @@ fn try_main() -> Result<(), SetupError> {
 
     let mut errors = Vec::new();
     for (name, target) in targets_to_use {
-        let mut todo_files = read_directory(&target.directory, &name)?;
-        let mut url_map = todo_files
-            .iter_mut()
-            .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
-            .collect::<BTreeMap<String, _>>();
-
-        let mut all_new_items = Vec::new();
-        for (name, profile) in target.profiles {
-            let item_source = accounts
-                .get(&profile.account)
-                .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
-            let new_items = item_source
-                .fetch_items(&profile.target, &profile.filters, &mut url_map)
-                .map_err(|err| SetupError::fetch_items(profile.account, name, err))?;
-            all_new_items.extend(new_items);
-        }
-
-        let mut write_item = |url: String, item| {
-            if let Err(err) = item {
-                error!("failed to write todo for {url} in the {name} target: {err:?}");
-                errors.push((
-                    format!("failed to write todo for {url} in the {name} target: {err}"),
-                    err,
-                ));
-            }
-        };
-
-        for todo_item in all_new_items {
-            let url = todo_item.url().into();
-            write_item(
-                url,
-                TodoFile::from_item(&target.directory, todo_item).map(|_| ()),
-            );
-        }
-
-        for mut todo_file in todo_files {
-            let url = todo_file.item.url().into();
-            write_item(url, todo_file.write());
-        }
+        sync_target(&name, target, &accounts, &mut errors)?;
     }
 
     if errors.is_empty() {
@@ -376,6 +463,7 @@ fn try_main() -> Result<(), SetupError> {
 fn main() {
     setup_panic!();
 
+    #[expect(clippy::panic, reason = "Surfacing any error during execution")]
     if let Err(err) = try_main() {
         error!("{err:?}");
         panic!("{:?}", err);
