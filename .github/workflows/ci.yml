@@ -55,21 +55,33 @@ jobs:
       - run: cargo fmt --all -- --check
 
   test:
-    name: Test (${{ matrix.rustver }}, ${{ matrix.features || 'no features' }})
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.rustver }}, ${{ matrix.os }}, ${{ matrix.features || 'no features' }})
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - rustver: stable
+          # Linux — all feature combinations
+          - os: ubuntu-latest
+            rustver: stable
             features: "--all-features"
-          - rustver: stable
+          - os: ubuntu-latest
+            rustver: stable
             features: ""
-          - rustver: nightly
+          - os: ubuntu-latest
+            rustver: nightly
             features: "--all-features"
             allow_failures: true
+          # macOS (Apple Silicon) — all-features only
+          - os: macos-latest
+            rustver: stable
+            features: "--all-features"
+          # Windows — all-features only
+          - os: windows-latest
+            rustver: stable
+            features: "--all-features"
     continue-on-error: ${{ matrix.allow_failures == true }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -84,7 +96,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: test-${{ matrix.rustver }}-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: test-${{ matrix.rustver }}-${{ matrix.features }}-
+          key: test-${{ matrix.rustver }}-${{ matrix.os }}-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: test-${{ matrix.rustver }}-${{ matrix.os }}-${{ matrix.features }}-
       - run: cargo build ${{ matrix.features }}
       - run: cargo test ${{ matrix.features }}
