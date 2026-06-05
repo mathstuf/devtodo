@@ -51,9 +51,9 @@ pub enum GithubError {
     #[error("graphql error: [\"{}\"]", message.iter().format("\", \""))]
     GraphQL { message: Vec<graphql_client::Error> },
     #[error("no response from github")]
-    NoResponse {},
+    NoResponse,
     #[error("failure even after exponential backoff")]
-    GithubBackoff {},
+    GithubBackoff,
 }
 
 impl GithubError {
