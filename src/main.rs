@@ -13,7 +13,7 @@ use clap::builder::PossibleValuesParser;
 use clap::{self, Arg, ArgAction, Command};
 use directories::ProjectDirs;
 use human_panic::setup_panic;
-use log::*;
+use log::{error, warn, LevelFilter};
 use thiserror::Error;
 
 /// Account backend integrations.
