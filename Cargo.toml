@@ -9,6 +9,31 @@ license = "MIT OR Apache-2.0"
 keywords = ["github", "gitlab", "forgejo", "todo", "ical"]
 categories = ["command-line-utilities"]
 
+[lints.clippy]
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+restriction = { level = "warn", priority = -2 }
+nursery = { level = "warn", priority = -3 }
+
+absolute_paths = "allow"
+arbitrary_source_item_ordering = "allow"
+blanket_clippy_restriction_lints = "allow"
+expect_used = "allow"
+implicit_return = "allow"
+multiple_crate_versions = "allow"
+partial_pub_fields = "allow"
+pattern_type_mismatch = "allow"
+pub_without_shorthand = "allow"
+question_mark_used = "allow"
+self_named_module_files = "allow"
+std_instead_of_alloc = "allow"
+std_instead_of_core = "allow"
+
 [features]
 default = ["github"]
 github = ["graphql_client", "reqwest", "serde_json", "url"]
