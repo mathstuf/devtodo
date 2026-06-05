@@ -31,7 +31,7 @@ macro_rules! gql_query {
         gql_query_base!($name);
 
         impl $name {
-            pub(crate) fn name() -> &'static str {
+            pub(crate) const fn name() -> &'static str {
                 $query_name
             }
         }

@@ -32,14 +32,14 @@ pub enum TodoError {
 }
 
 impl TodoError {
-    fn read_file(path: PathBuf, source: io::Error) -> Self {
+    const fn read_file(path: PathBuf, source: io::Error) -> Self {
         Self::ReadFile {
             path,
             source,
         }
     }
 
-    fn write_file(path: PathBuf, source: io::Error) -> Self {
+    const fn write_file(path: PathBuf, source: io::Error) -> Self {
         Self::WriteFile {
             path,
             source,
@@ -217,7 +217,7 @@ static ALL_TODO_KINDS: &[TodoKind] = &[
 ];
 
 impl TodoKind {
-    fn category(self) -> &'static str {
+    const fn category(self) -> &'static str {
         match self {
             Self::Issue => "issue",
             Self::AssignedIssue => "assigned-issue",

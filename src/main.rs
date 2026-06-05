@@ -86,28 +86,28 @@ enum SetupError {
 }
 
 impl SetupError {
-    fn read_config(path: PathBuf, source: io::Error) -> Self {
+    const fn read_config(path: PathBuf, source: io::Error) -> Self {
         Self::ReadConfig {
             path,
             source,
         }
     }
 
-    fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
+    const fn parse_config(path: PathBuf, source: serde_saphyr::Error) -> Self {
         Self::ParseConfig {
             path,
             source,
         }
     }
 
-    fn account(name: String, source: account::AccountError) -> Self {
+    const fn account(name: String, source: account::AccountError) -> Self {
         Self::Account {
             name,
             source,
         }
     }
 
-    fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
+    const fn read_dir(path: PathBuf, name: String, source: io::Error) -> Self {
         Self::ReadDir {
             path,
             name,
@@ -115,27 +115,27 @@ impl SetupError {
         }
     }
 
-    fn read_entry(name: String, source: io::Error) -> Self {
+    const fn read_entry(name: String, source: io::Error) -> Self {
         Self::ReadEntry {
             name,
             source,
         }
     }
 
-    fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
+    const fn todo_file(path: PathBuf, source: todo::TodoError) -> Self {
         Self::TodoFile {
             path,
             source,
         }
     }
 
-    fn no_such_account(name: String) -> Self {
+    const fn no_such_account(name: String) -> Self {
         Self::NoSuchAccount {
             name,
         }
     }
 
-    fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
+    const fn fetch_items(account: String, profile: String, source: account::ItemError) -> Self {
         Self::FetchItems {
             account,
             profile,
@@ -143,7 +143,7 @@ impl SetupError {
         }
     }
 
-    fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
+    const fn write_errors(errors: Vec<(String, todo::TodoError)>) -> Self {
         Self::WriteErrors {
             errors,
         }

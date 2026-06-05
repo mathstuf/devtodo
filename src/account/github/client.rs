@@ -57,46 +57,46 @@ pub enum GithubError {
 }
 
 impl GithubError {
-    fn should_backoff(&self) -> bool {
+    const fn should_backoff(&self) -> bool {
         matches!(self, Self::GithubService { .. })
     }
 
-    pub fn send_request(endpoint: Url, source: reqwest::Error) -> Self {
+    pub const fn send_request(endpoint: Url, source: reqwest::Error) -> Self {
         Self::SendRequest {
             endpoint,
             source,
         }
     }
 
-    pub fn github(response: String) -> Self {
+    pub const fn github(response: String) -> Self {
         Self::Github {
             response,
         }
     }
 
-    fn github_service(status: reqwest::StatusCode) -> Self {
+    const fn github_service(status: reqwest::StatusCode) -> Self {
         Self::GithubService {
             status,
         }
     }
 
-    pub fn json_response(source: reqwest::Error) -> Self {
+    pub const fn json_response(source: reqwest::Error) -> Self {
         Self::JsonResponse {
             source,
         }
     }
 
-    fn graphql(message: Vec<graphql_client::Error>) -> Self {
+    const fn graphql(message: Vec<graphql_client::Error>) -> Self {
         Self::GraphQL {
             message,
         }
     }
 
-    fn no_response() -> Self {
+    const fn no_response() -> Self {
         Self::NoResponse {}
     }
 
-    fn github_backoff() -> Self {
+    const fn github_backoff() -> Self {
         Self::GithubBackoff {}
     }
 }
