@@ -34,6 +34,18 @@ pub enum ItemError {
     },
 }
 
+impl ItemError {
+    pub fn query_error<M>(service: &'static str, message: M) -> Self
+    where
+        M: Into<String>,
+    {
+        Self::QueryError {
+            service,
+            message: message.into(),
+        }
+    }
+}
+
 pub type ItemLookup<'item> = BTreeMap<String, &'item mut TodoItem>;
 
 pub trait ItemSource {

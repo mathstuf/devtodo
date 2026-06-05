@@ -254,11 +254,10 @@ impl GithubQuery {
                 .send::<queries::ViewerIssues>(&query)
                 .map_err(|err| {
                     error!("failed to send viewer issue query: {err:?}");
-                    let message = format!("failed to send viewer issue query: {err}");
-                    ItemError::QueryError {
-                        service: "github",
-                        message,
-                    }
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send viewer issue query: {err}"),
+                    )
                 })?;
 
             Self::check_rate_limits(
@@ -304,11 +303,10 @@ impl GithubQuery {
                 .send::<queries::ViewerPullRequests>(&query)
                 .map_err(|err| {
                     error!("failed to send viewer pull request query: {err:?}");
-                    let message = format!("failed to send viewer pull request query: {err}");
-                    ItemError::QueryError {
-                        service: "github",
-                        message,
-                    }
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send viewer pull request query: {err}"),
+                    )
                 })?;
 
             Self::check_rate_limits(
@@ -365,10 +363,10 @@ impl GithubQuery {
                 (owner.to_owned(), name.to_owned())
             } else {
                 error!("invalid project format (expected owner/repo): {project}");
-                return Err(ItemError::QueryError {
-                    service: "github",
-                    message: format!("invalid project format (expected owner/repo): {project}"),
-                });
+                return Err(ItemError::query_error(
+                    "github",
+                    format!("invalid project format (expected owner/repo): {project}"),
+                ));
             };
 
             // Query for repository issues
@@ -386,12 +384,10 @@ impl GithubQuery {
                     .send::<queries::RepositoryIssues>(&query)
                     .map_err(|err| {
                         error!("failed to send repository issue query for {project}: {err:?}");
-                        let message =
-                            format!("failed to send repository issue query for {project}: {err}");
-                        ItemError::QueryError {
-                            service: "github",
-                            message,
-                        }
+                        ItemError::query_error(
+                            "github",
+                            format!("failed to send repository issue query for {project}: {err}"),
+                        )
                     })?;
 
                 Self::check_rate_limits(
@@ -440,13 +436,12 @@ impl GithubQuery {
                         error!(
                             "failed to send repository pull request query for {project}: {err:?}",
                         );
-                        let message = format!(
-                            "failed to send repository pull request query for {project}: {err}",
-                        );
-                        ItemError::QueryError {
-                            service: "github",
-                            message,
-                        }
+                        ItemError::query_error(
+                            "github",
+                            format!(
+                                "failed to send repository pull request query for {project}: {err}",
+                            ),
+                        )
                     })?;
 
                 Self::check_rate_limits(

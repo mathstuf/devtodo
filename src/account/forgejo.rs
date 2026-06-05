@@ -177,10 +177,7 @@ impl ForgejoQuery {
 
             let (_, assigned_issues) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query assigned issues: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query assigned issues: {err}"),
-                }
+                ItemError::query_error("forgejo", format!("failed to query assigned issues: {err}"))
             })?;
 
             items.extend(
@@ -202,10 +199,7 @@ impl ForgejoQuery {
 
             let (_, created_issues) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query created issues: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query created issues: {err}"),
-                }
+                ItemError::query_error("forgejo", format!("failed to query created issues: {err}"))
             })?;
 
             items.extend(
@@ -227,10 +221,10 @@ impl ForgejoQuery {
 
             let (_, assigned_prs) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query assigned pull requests: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query assigned pull requests: {err}"),
-                }
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to query assigned pull requests: {err}"),
+                )
             })?;
 
             items.extend(
@@ -252,10 +246,10 @@ impl ForgejoQuery {
 
             let (_, created_prs) = client.issue_search_issues(query).send().map_err(|err| {
                 error!("failed to query created pull requests: {err:?}");
-                ItemError::QueryError {
-                    service: "forgejo",
-                    message: format!("failed to query created pull requests: {err}"),
-                }
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to query created pull requests: {err}"),
+                )
             })?;
 
             items.extend(
@@ -318,12 +312,10 @@ impl ForgejoQuery {
                     .send()
                     .map_err(|err| {
                         error!("failed to query project {project_path} issues: {err:?}");
-                        ItemError::QueryError {
-                            service: "forgejo",
-                            message: format!(
-                                "failed to query project {project_path} issues: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "forgejo",
+                            format!("failed to query project {project_path} issues: {err}"),
+                        )
                     })?;
 
                 items.extend(
@@ -347,12 +339,10 @@ impl ForgejoQuery {
                     .send()
                     .map_err(|err| {
                         error!("failed to query project {project_path} pull requests: {err:?}");
-                        ItemError::QueryError {
-                            service: "forgejo",
-                            message: format!(
-                                "failed to query project {project_path} pull requests: {err}",
-                            ),
-                        }
+                        ItemError::query_error(
+                            "forgejo",
+                            format!("failed to query project {project_path} pull requests: {err}"),
+                        )
                     })?;
 
                 items.extend(
