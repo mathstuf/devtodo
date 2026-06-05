@@ -23,7 +23,8 @@ mod config;
 /// iCalendar todo-file reading and writing.
 mod todo;
 
-use self::config::Config;
+use self::account::ItemSource;
+use self::config::{Config, SyncTarget};
 use self::todo::TodoFile;
 
 /// Errors that can occur when initialising the logging backend.
@@ -325,6 +326,56 @@ fn build_command() -> clap::Command {
         )
 }
 
+/// Sync a single target, writing todo items and collecting errors.
+#[expect(clippy::single_call_fn, reason = "function size")]
+fn sync_target(
+    name: &str,
+    target: SyncTarget,
+    accounts: &BTreeMap<String, Box<dyn ItemSource>>,
+    errors: &mut Vec<(String, todo::TodoError)>,
+) -> Result<(), SetupError> {
+    let mut todo_files = read_directory(&target.directory, name)?;
+    let mut url_map = todo_files
+        .iter_mut()
+        .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
+        .collect::<BTreeMap<String, _>>();
+
+    let mut all_new_items = Vec::new();
+    for (profile_name, profile) in target.profiles {
+        let item_source = accounts
+            .get(&profile.account)
+            .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
+        let new_items = item_source
+            .fetch_items(&profile.target, &profile.filters, &mut url_map)
+            .map_err(|err| SetupError::fetch_items(profile.account, profile_name, err))?;
+        all_new_items.extend(new_items);
+    }
+
+    let mut write_item = |url: String, item| {
+        if let Err(err) = item {
+            error!("failed to write todo for {url} in the {name} target: {err:?}");
+            errors.push((
+                format!("failed to write todo for {url} in the {name} target: {err}"),
+                err,
+            ));
+        }
+    };
+
+    for todo_item in all_new_items {
+        let url = todo_item.url().into();
+        write_item(
+            url,
+            TodoFile::from_item(&target.directory, todo_item).map(|_| ()),
+        );
+    }
+    for mut todo_file in todo_files {
+        let url = todo_file.item.url().into();
+        write_item(url, todo_file.write());
+    }
+
+    Ok(())
+}
+
 #[expect(clippy::single_call_fn, reason = "separate concerns")]
 /// Entry point with a `Result` return so that `main` can report errors uniformly.
 fn try_main() -> Result<(), SetupError> {
@@ -395,45 +446,7 @@ fn try_main() -> Result<(), SetupError> {
 
     let mut errors = Vec::new();
     for (name, target) in targets_to_use {
-        let mut todo_files = read_directory(&target.directory, &name)?;
-        let mut url_map = todo_files
-            .iter_mut()
-            .map(|todo_file| (todo_file.item.url().into(), &mut todo_file.item))
-            .collect::<BTreeMap<String, _>>();
-
-        let mut all_new_items = Vec::new();
-        for (profile_name, profile) in target.profiles {
-            let item_source = accounts
-                .get(&profile.account)
-                .ok_or_else(|| SetupError::no_such_account(profile.account.clone()))?;
-            let new_items = item_source
-                .fetch_items(&profile.target, &profile.filters, &mut url_map)
-                .map_err(|err| SetupError::fetch_items(profile.account, profile_name, err))?;
-            all_new_items.extend(new_items);
-        }
-
-        let mut write_item = |url: String, item| {
-            if let Err(err) = item {
-                error!("failed to write todo for {url} in the {name} target: {err:?}");
-                errors.push((
-                    format!("failed to write todo for {url} in the {name} target: {err}"),
-                    err,
-                ));
-            }
-        };
-
-        for todo_item in all_new_items {
-            let url = todo_item.url().into();
-            write_item(
-                url,
-                TodoFile::from_item(&target.directory, todo_item).map(|_| ()),
-            );
-        }
-
-        for mut todo_file in todo_files {
-            let url = todo_file.item.url().into();
-            write_item(url, todo_file.write());
-        }
+        sync_target(&name, target, &accounts, &mut errors)?;
     }
 
     if errors.is_empty() {
