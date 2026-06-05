@@ -62,6 +62,7 @@ impl GithubError {
         matches!(self, Self::GithubService { .. })
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     pub const fn send_request(endpoint: Url, source: reqwest::Error) -> Self {
         Self::SendRequest {
             endpoint,
@@ -69,34 +70,40 @@ impl GithubError {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     pub const fn github(response: String) -> Self {
         Self::Github {
             response,
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn github_service(status: reqwest::StatusCode) -> Self {
         Self::GithubService {
             status,
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     pub const fn json_response(source: reqwest::Error) -> Self {
         Self::JsonResponse {
             source,
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn graphql(message: Vec<graphql_client::Error>) -> Self {
         Self::GraphQL {
             message,
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn no_response() -> Self {
         Self::NoResponse {}
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn github_backoff() -> Self {
         Self::GithubBackoff {}
     }
@@ -120,6 +127,7 @@ pub struct Github {
 }
 
 impl Github {
+    #[expect(clippy::single_call_fn, reason = "used from dispatching code")]
     pub fn new<T>(host: &str, token: T) -> GithubResult<Self>
     where
         T: Into<String>,
@@ -194,6 +202,10 @@ impl Github {
     }
 }
 
+#[expect(
+    clippy::single_call_fn,
+    reason = "separate from generic constraints and syntax"
+)]
 fn retry_with_backoff<F, K>(mut go: F) -> GithubResult<K>
 where
     F: FnMut() -> GithubResult<K>,

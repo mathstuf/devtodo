@@ -31,6 +31,10 @@ macro_rules! gql_query {
         gql_query_base!($name);
 
         impl $name {
+            #[expect(
+                clippy::single_call_fn,
+                reason = "GraphQL queries can be used just once"
+            )]
             pub(crate) const fn name() -> &'static str {
                 $query_name
             }

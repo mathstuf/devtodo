@@ -32,6 +32,7 @@ pub enum TodoError {
 }
 
 impl TodoError {
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     const fn read_file(path: PathBuf, source: io::Error) -> Self {
         Self::ReadFile {
             path,
@@ -65,6 +66,7 @@ enum Updated {
 }
 
 impl TodoFile {
+    #[expect(clippy::single_call_fn, reason = "function size")]
     pub fn from_item<P>(dir: P, item: TodoItem) -> TodoResult<Self>
     where
         P: AsRef<Path>,
@@ -72,6 +74,7 @@ impl TodoFile {
         Self::from_item_impl(dir.as_ref(), item)
     }
 
+    #[expect(clippy::single_call_fn, reason = "monomorphization")]
     fn from_item_impl(dir: &Path, item: TodoItem) -> TodoResult<Self> {
         let path = dir.join(format!("{}.ics", item.uid.0));
         let subcomponent = item.vtodo();
@@ -118,6 +121,7 @@ impl TodoFile {
         }
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience constructor")]
     pub fn from_path<P>(path: P) -> TodoResult<Option<Self>>
     where
         P: Into<PathBuf>,
@@ -125,6 +129,7 @@ impl TodoFile {
         Self::from_path_impl(path.into())
     }
 
+    #[expect(clippy::single_call_fn, reason = "monomorphization")]
     fn from_path_impl(path: PathBuf) -> TodoResult<Option<Self>> {
         let contents =
             fs::read_to_string(&path).map_err(|err| TodoError::read_file(path.clone(), err))?;
@@ -153,6 +158,7 @@ impl TodoFile {
         Some(())
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn extract_component_as_mut(component: &mut Component) -> Option<&mut Component> {
         Self::is_our_component(component)?;
         let subcomponent = &mut component.subcomponents[0];
@@ -163,6 +169,7 @@ impl TodoFile {
         Some(subcomponent)
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience accessor")]
     fn extract_component_as_ref(component: &Component) -> Option<&Component> {
         Self::is_our_component(component)?;
         let subcomponent = &component.subcomponents[0];
@@ -173,6 +180,7 @@ impl TodoFile {
         Some(subcomponent)
     }
 
+    #[expect(clippy::single_call_fn, reason = "convenience accessor")]
     fn extract_component(component: &Component) -> Option<Component> {
         Self::extract_component_as_ref(component).cloned()
     }
@@ -328,6 +336,11 @@ pub struct TodoItem {
 }
 
 impl TodoItem {
+    #[expect(
+        clippy::allow_attributes,
+        reason = "call counts depend on feature selection"
+    )]
+    #[allow(clippy::single_call_fn, reason = "public builder API")]
     pub fn builder() -> TodoItemBuilder {
         TodoItemBuilder::default()
     }
@@ -420,6 +433,7 @@ impl TodoItem {
         &self.url
     }
 
+    #[expect(clippy::single_call_fn, reason = "function size")]
     fn from_component(component: Component) -> Option<Self> {
         let uid = Uid(component.get_only("UID")?.value_as_string());
         let (kind, labels, milestone) = {
