@@ -169,7 +169,7 @@ fn read_directory(dirpath: &Path, name: &str) -> Result<Vec<TodoFile>, SetupErro
         let path = entry.path();
 
         // Only look at `.ics` files.
-        if path.extension().map(|ext| ext != "ics").unwrap_or(true) {
+        if path.extension().is_none_or(|ext| ext != "ics") {
             continue;
         }
 
