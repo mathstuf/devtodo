@@ -384,6 +384,7 @@ fn try_main() -> Result<(), SetupError> {
 fn main() {
     setup_panic!();
 
+    #[expect(clippy::panic, reason = "Surfacing any error during execution")]
     if let Err(err) = try_main() {
         error!("{err:?}");
         panic!("{:?}", err);
