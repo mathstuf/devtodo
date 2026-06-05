@@ -362,6 +362,81 @@ impl GithubQuery {
         Ok(items)
     }
 
+    /// Query all issues for a single repository, paginating automatically.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn query_repository_issues(
+        client: &client::Github,
+        owner: &str,
+        name: &str,
+        filters: &[Filter],
+    ) -> Result<Vec<GithubItem>, ItemError> {
+        // Collect labels from filters
+        let labels = {
+            let label_list: Vec<String> = filters
+                .iter()
+                .map(|Filter::Label(label)| label.clone())
+                .collect();
+            if label_list.is_empty() {
+                None
+            } else {
+                Some(label_list)
+            }
+        };
+
+        let mut issues_input = queries::repository_issues::Variables {
+            owner: owner.into(),
+            name: name.into(),
+            labels,
+            states: Some(vec![queries::repository_issues::IssueState::OPEN]),
+            cursor: None,
+        };
+
+        let mut items = Vec::new();
+
+        loop {
+            let query = queries::RepositoryIssues::build_query(issues_input.clone());
+            let rsp = client
+                .send::<queries::RepositoryIssues>(&query)
+                .map_err(|err| {
+                    error!("failed to send repository issue query for {owner}/{name}: {err:?}");
+                    ItemError::query_error(
+                        "github",
+                        format!("failed to send repository issue query for {owner}/{name}: {err}"),
+                    )
+                })?;
+
+            Self::check_rate_limits(
+                rsp.rate_limit_info.rate_limit.as_ref(),
+                queries::RepositoryIssues::name(),
+            );
+
+            if let Some(repo) = rsp.repository {
+                let (gql_issues, page_info) = (repo.issues.items, repo.issues.page_info);
+                if let Some(issues) = gql_issues {
+                    items.extend(issues.into_iter().flatten().map(GithubItem::from));
+                }
+
+                if page_info.has_next_page {
+                    if page_info.end_cursor.is_none() {
+                        return Err(ItemError::query_error(
+                            "github",
+                            "GitHub reported another page of issues but provided no \
+                                      end cursor; bailing to avoid an infinite loop.",
+                        ));
+                    }
+                    issues_input.cursor = page_info.end_cursor;
+                } else {
+                    break;
+                }
+            } else {
+                warn!("repository {owner}/{name} not found or not accessible");
+                break;
+            }
+        }
+
+        Ok(items)
+    }
+
     /// Query issues and pull requests across multiple repositories.
     #[expect(clippy::single_call_fn, reason = "function size")]
     fn query_projects(
@@ -386,9 +461,7 @@ impl GithubQuery {
 
         for project in projects {
             // Parse "owner/repo" format
-            let (owner, name) = if let Some((owner, name)) = project.split_once('/') {
-                (owner.to_owned(), name.to_owned())
-            } else {
+            let Some((owner, name)) = project.split_once('/') else {
                 error!("invalid project format (expected owner/repo): {project}");
                 return Err(ItemError::query_error(
                     "github",
@@ -396,60 +469,12 @@ impl GithubQuery {
                 ));
             };
 
-            // Query for repository issues
-            let mut issues_input = queries::repository_issues::Variables {
-                owner: owner.clone(),
-                name: name.clone(),
-                labels: labels.clone(),
-                states: Some(vec![queries::repository_issues::IssueState::OPEN]),
-                cursor: None,
-            };
-
-            loop {
-                let query = queries::RepositoryIssues::build_query(issues_input.clone());
-                let rsp = client
-                    .send::<queries::RepositoryIssues>(&query)
-                    .map_err(|err| {
-                        error!("failed to send repository issue query for {project}: {err:?}");
-                        ItemError::query_error(
-                            "github",
-                            format!("failed to send repository issue query for {project}: {err}"),
-                        )
-                    })?;
-
-                Self::check_rate_limits(
-                    rsp.rate_limit_info.rate_limit.as_ref(),
-                    queries::RepositoryIssues::name(),
-                );
-
-                if let Some(repo) = rsp.repository {
-                    let (gql_issues, page_info) = (repo.issues.items, repo.issues.page_info);
-                    if let Some(issues) = gql_issues {
-                        items.extend(issues.into_iter().flatten().map(GithubItem::from));
-                    }
-
-                    if page_info.has_next_page {
-                        if page_info.end_cursor.is_none() {
-                            return Err(ItemError::query_error(
-                                "github",
-                                "GitHub reported another page of issues but provided no \
-                                          end cursor; bailing to avoid an infinite loop.",
-                            ));
-                        }
-                        issues_input.cursor = page_info.end_cursor;
-                    } else {
-                        break;
-                    }
-                } else {
-                    warn!("repository {project} not found or not accessible");
-                    break;
-                }
-            }
+            items.extend(Self::query_repository_issues(client, owner, name, filters)?);
 
             // Query for repository pull requests
             let mut prs_input = queries::repository_pull_requests::Variables {
-                owner: owner.clone(),
-                name: name.clone(),
+                owner: owner.to_owned(),
+                name: name.to_owned(),
                 labels: labels.clone(),
                 states: Some(vec![
                     queries::repository_pull_requests::PullRequestState::OPEN,
