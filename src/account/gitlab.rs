@@ -7,7 +7,7 @@
 //! GitLab integration using the `gitlab` crate (REST API).
 
 use chrono::NaiveDate;
-use gitlab::api::{self, issues, merge_requests, projects, Query};
+use gitlab::api::{self, issues, merge_requests, projects, Query as _};
 use gitlab::Gitlab;
 use log::{error, warn};
 use serde::Deserialize;

@@ -6,7 +6,7 @@
 
 use std::cell::{LazyCell, OnceCell};
 
-use graphql_client::GraphQLQuery;
+use graphql_client::GraphQLQuery as _;
 use log::{error, warn};
 
 use crate::account::prelude::*;

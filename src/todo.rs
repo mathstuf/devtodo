@@ -11,9 +11,9 @@ use std::iter;
 use std::ops;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone as _, Utc};
 use derive_builder::Builder;
-use itertools::Itertools;
+use itertools::Itertools as _;
 use thiserror::Error;
 use uuid::Uuid;
 use vobject::{Component, Property};

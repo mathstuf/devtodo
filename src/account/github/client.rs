@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use graphql_client::{GraphQLQuery, QueryBody, Response};
-use itertools::Itertools;
+use itertools::Itertools as _;
 use log::{info, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{self, HeaderMap, HeaderValue};
