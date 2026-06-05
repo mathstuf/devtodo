@@ -81,7 +81,7 @@ impl ForgejoItem {
             .and_then(|milestone| milestone.due_on.as_ref())
             .map(|dt| {
                 let date = dt.date();
-                NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32)
+                NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day().into())
                     .expect("valid date from API")
             })
             .map(Due::Date);
