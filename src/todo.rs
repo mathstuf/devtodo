@@ -572,7 +572,7 @@ impl TodoItem {
 
         let new_categories = existing_categories
             .into_iter()
-            .chain(iter::once(self.kind.category().to_string()))
+            .chain(iter::once(self.kind.category().to_owned()))
             .chain(label_categories)
             .chain(milestone_category)
             .format(",");
