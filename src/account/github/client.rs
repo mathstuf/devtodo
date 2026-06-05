@@ -143,7 +143,9 @@ impl Github {
 
     /// The authorization header for GraphQL.
     fn auth_header(&self) -> HeaderMap {
-        let mut header_value: HeaderValue = format!("bearer {}", self.token).parse().unwrap();
+        let mut header_value: HeaderValue = format!("bearer {}", self.token)
+            .parse()
+            .expect("the token should create a valid header value");
         header_value.set_sensitive(true);
         iter::once((header::AUTHORIZATION, header_value)).collect()
     }

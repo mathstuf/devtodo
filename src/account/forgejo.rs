@@ -134,7 +134,7 @@ impl ForgejoQuery {
         let actual_host = host.unwrap_or_else(|| "codeberg.org".into());
         let url = Url::parse(&format!("https://{actual_host}")).unwrap_or_else(|_| {
             // Fallback if the host is malformed
-            Url::parse("https://codeberg.org").unwrap()
+            Url::parse("https://codeberg.org").expect("codeberg.org is a valid URL")
         });
 
         let client = Forgejo::new(Auth::Token(token), url);
