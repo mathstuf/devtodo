@@ -63,9 +63,12 @@ macro_rules! impl_issue {
                 let due = issue
                     .milestone
                     .as_ref()
-                    .and_then(|m| m.due_on)
+                    .and_then(|milestone| milestone.due_on)
                     .map(Due::DateTime);
-                let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
+                let milestone = issue
+                    .milestone
+                    .as_ref()
+                    .map(|milestone| milestone.title.clone());
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::Issue;
                 let status = match issue.state {
@@ -74,7 +77,7 @@ macro_rules! impl_issue {
                         if issue
                             .assignees
                             .assignees
-                            .map(|v| v.is_empty())
+                            .map(|assignees| assignees.is_empty())
                             .unwrap_or(true)
                         {
                             TodoStatus::NeedsAction
@@ -89,11 +92,11 @@ macro_rules! impl_issue {
                 };
                 let labels = issue
                     .labels
-                    .and_then(|l| l.labels)
+                    .and_then(|labels| labels.labels)
                     .unwrap_or_default()
                     .into_iter()
                     .flatten()
-                    .map(|l| l.name)
+                    .map(|label| label.name)
                     .collect();
 
                 Self {
@@ -128,9 +131,12 @@ macro_rules! impl_pull_request {
                 let due = pr
                     .milestone
                     .as_ref()
-                    .and_then(|m| m.due_on)
+                    .and_then(|milestone| milestone.due_on)
                     .map(Due::DateTime);
-                let milestone = pr.milestone.as_ref().map(|m| m.title.clone());
+                let milestone = pr
+                    .milestone
+                    .as_ref()
+                    .map(|milestone| milestone.title.clone());
                 let draft = pr.is_draft;
                 // TODO: Determine whether this is assigned or not.
                 let kind = TodoKind::PullRequest;
@@ -138,7 +144,12 @@ macro_rules! impl_pull_request {
                     <$state>::CLOSED => TodoStatus::Cancelled,
                     <$state>::MERGED => TodoStatus::Completed,
                     <$state>::OPEN => {
-                        if pr.assignees.assignees.map(|v| v.is_empty()).unwrap_or(true) {
+                        if pr
+                            .assignees
+                            .assignees
+                            .map(|assignees| assignees.is_empty())
+                            .unwrap_or(true)
+                        {
                             TodoStatus::NeedsAction
                         } else {
                             TodoStatus::InProcess
@@ -151,11 +162,11 @@ macro_rules! impl_pull_request {
                 };
                 let labels = pr
                     .labels
-                    .and_then(|l| l.labels)
+                    .and_then(|labels| labels.labels)
                     .unwrap_or_default()
                     .into_iter()
                     .flatten()
-                    .map(|l| l.name)
+                    .map(|label| label.name)
                     .collect();
 
                 Self {

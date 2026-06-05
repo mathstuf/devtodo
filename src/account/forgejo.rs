@@ -40,7 +40,10 @@ impl ForgejoItem {
         };
 
         let state = issue.state.unwrap_or(StateType::Open);
-        let has_assignees = issue.assignees.as_ref().is_some_and(|a| !a.is_empty());
+        let has_assignees = issue
+            .assignees
+            .as_ref()
+            .is_some_and(|assignees| !assignees.is_empty());
 
         let status = match state {
             StateType::Closed => {
@@ -75,7 +78,7 @@ impl ForgejoItem {
         let due = issue
             .milestone
             .as_ref()
-            .and_then(|m| m.due_on.as_ref())
+            .and_then(|milestone| milestone.due_on.as_ref())
             .map(|dt| {
                 let date = dt.date();
                 NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32)
@@ -84,14 +87,17 @@ impl ForgejoItem {
             .map(Due::Date);
 
         // Extract milestone title
-        let milestone = issue.milestone.as_ref().and_then(|m| m.title.clone());
+        let milestone = issue
+            .milestone
+            .as_ref()
+            .and_then(|milestone| milestone.title.clone());
 
         // Extract labels from issue
         let labels = issue
             .labels
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|l| l.name)
+            .filter_map(|label| label.name)
             .collect();
 
         // Extract draft status from pull request metadata
@@ -107,7 +113,10 @@ impl ForgejoItem {
             description: issue.body.unwrap_or_default(),
             kind,
             status,
-            url: issue.html_url.map(|u| u.to_string()).unwrap_or_default(),
+            url: issue
+                .html_url
+                .map(|url| url.to_string())
+                .unwrap_or_default(),
             labels,
             milestone,
             draft,
@@ -143,9 +152,9 @@ impl ForgejoQuery {
         let labels: Option<String> = {
             let label_list: Vec<&str> = filters
                 .iter()
-                .map(|f| {
-                    match f {
-                        Filter::Label(l) => l.as_str(),
+                .map(|filter| {
+                    match filter {
+                        Filter::Label(label) => label.as_str(),
                     }
                 })
                 .collect();
@@ -275,9 +284,9 @@ impl ForgejoQuery {
         let labels: Option<String> = {
             let label_list: Vec<&str> = filters
                 .iter()
-                .map(|f| {
-                    match f {
-                        Filter::Label(l) => l.as_str(),
+                .map(|filter| {
+                    match filter {
+                        Filter::Label(label) => label.as_str(),
                     }
                 })
                 .collect();

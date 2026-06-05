@@ -70,7 +70,10 @@ impl From<GitlabIssue> for GitlabItem {
             .due_date
             .or_else(|| issue.milestone.as_ref()?.due_date)
             .map(Due::Date);
-        let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
+        let milestone = issue
+            .milestone
+            .as_ref()
+            .map(|milestone| milestone.title.clone());
         // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::Issue;
         let status = match issue.state.as_str() {
@@ -108,9 +111,12 @@ impl From<GitlabMergeRequest> for GitlabItem {
         let due = mr
             .milestone
             .as_ref()
-            .and_then(|m| m.due_date)
+            .and_then(|milestone| milestone.due_date)
             .map(Due::Date);
-        let milestone = mr.milestone.as_ref().map(|m| m.title.clone());
+        let milestone = mr
+            .milestone
+            .as_ref()
+            .map(|milestone| milestone.title.clone());
         let draft = mr.draft;
         // TODO: Determine whether this is assigned or not.
         let kind = TodoKind::PullRequest;

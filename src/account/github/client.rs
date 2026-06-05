@@ -213,7 +213,7 @@ where
     let mut timeout = BACKOFF_START;
     for _ in 0..BACKOFF_LIMIT {
         match go() {
-            Ok(r) => return Ok(r),
+            Ok(res) => return Ok(res),
             Err(err) => {
                 if err.should_backoff() {
                     thread::sleep(timeout);
