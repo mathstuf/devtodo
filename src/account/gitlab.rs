@@ -68,7 +68,7 @@ impl From<GitlabIssue> for GitlabItem {
         let start = issue.start_date.map(Due::Date);
         let due = issue
             .due_date
-            .or_else(|| issue.milestone.as_ref().and_then(|m| m.due_date))
+            .or_else(|| issue.milestone.as_ref()?.due_date)
             .map(Due::Date);
         let milestone = issue.milestone.as_ref().map(|m| m.title.clone());
         // TODO: Determine whether this is assigned or not.
