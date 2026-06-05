@@ -347,12 +347,7 @@ impl TodoItem {
 
     #[cfg(feature = "gitlab")]
     pub fn set_start(&mut self, new_start: Due) {
-        if self
-            .start
-            .as_ref()
-            .map(|&start| start != new_start)
-            .unwrap_or(true)
-        {
+        if self.start.as_ref().is_none_or(|&start| start != new_start) {
             self.start = Some(new_start);
             self.last_modified = Utc::now();
             self.updated = true;
@@ -360,7 +355,7 @@ impl TodoItem {
     }
 
     pub fn set_due(&mut self, new_due: Due) {
-        if self.due.as_ref().map(|&due| due != new_due).unwrap_or(true) {
+        if self.due.as_ref().is_none_or(|&due| due != new_due) {
             self.due = Some(new_due);
             self.last_modified = Utc::now();
             self.updated = true;
