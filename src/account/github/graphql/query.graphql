@@ -81,6 +81,7 @@ fragment PullRequestInfo on PullRequest {
         dueOn
         updatedAt
     }
+    reviewDecision
     state
     title
     url

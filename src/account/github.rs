@@ -10,7 +10,7 @@ use graphql_client::GraphQLQuery as _;
 use log::{error, warn};
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
 
 /// Low-level HTTP client for the GitHub GraphQL API.
 mod client;
@@ -58,6 +58,8 @@ struct GithubItem {
     draft: bool,
     /// Issues linked via RELATED-TO with an X-RELATION parameter.
     linked_issues: Vec<LinkedIssue>,
+    /// Review status if this is a merge request with reviews enabled.
+    review_status: Option<ReviewStatus>,
 }
 
 /// Implement `add_filter` for a GraphQL issue-filter type.
@@ -132,6 +134,7 @@ macro_rules! impl_issue {
                     milestone,
                     draft: false,
                     linked_issues: Vec::new(),
+                    review_status: None,
                 }
             }
         }
@@ -205,6 +208,17 @@ macro_rules! impl_pull_request {
                         }
                     })
                     .collect();
+                let review_status = pr.review_decision.map(|rd| {
+                    match format!("{rd:?}").as_str() {
+                        "APPROVED" => ReviewStatus::Approved,
+                        "CHANGES_REQUESTED" => ReviewStatus::ChangesRequested,
+                        "REVIEW_REQUIRED" => ReviewStatus::ReviewRequired,
+                        decision => {
+                            warn!("unknown github review decision: {decision}");
+                            ReviewStatus::Pending
+                        },
+                    }
+                });
 
                 Self {
                     due,
@@ -217,6 +231,7 @@ macro_rules! impl_pull_request {
                     milestone,
                     draft,
                     linked_issues,
+                    review_status,
                 }
             }
         }
@@ -621,6 +636,7 @@ impl ItemSource for GithubQuery {
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
+                    item.set_review_status(result.review_status);
 
                     None
                 } else {
@@ -640,6 +656,9 @@ impl ItemSource for GithubQuery {
                     }
                     if let Some(milestone) = result.milestone {
                         item.milestone(milestone);
+                    }
+                    if let Some(review_status) = result.review_status {
+                        item.review_status(review_status);
                     }
 
                     Some(item.build().expect("all item fields should be provided"))
