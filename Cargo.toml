@@ -66,3 +66,6 @@ gitlab = { version = "=0.1900.1", optional = true }
 
 # forgejo feature
 forgejo-api = { version = "0.10", features = ["sync"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"

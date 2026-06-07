@@ -914,6 +914,8 @@ impl TodoItem {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, reason = "testing code")]
+
     use super::*;
 
     #[test]
@@ -974,5 +976,148 @@ mod tests {
             assert_eq!(lhs.combine(rhs), expected);
             assert_eq!(rhs.combine(lhs), expected);
         }
+    }
+
+    fn make_item() -> TodoItem {
+        let mut item = TodoItem::builder()
+            .kind(TodoKind::Issue)
+            .status(TodoStatus::InProcess)
+            .url("https://example.com/issues/42".into())
+            .summary("Test issue".into())
+            .description("A description\nwith multiple lines.".into())
+            .labels(vec!["bug".into(), "critical".into()])
+            .milestone("v1.0".into())
+            .draft(false)
+            .due(Due::Date(NaiveDate::from_ymd_opt(2026, 7, 4).unwrap()))
+            .start(Due::Date(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()))
+            .linked_issues(vec![
+                LinkedIssue {
+                    url: "https://example.com/issues/43".into(),
+                    relation: Some(LinkedIssueRelation::DependsOn),
+                },
+                LinkedIssue {
+                    url: "https://example.com/issues/44".into(),
+                    relation: Some(LinkedIssueRelation::Blocks),
+                },
+                LinkedIssue {
+                    url: "https://example.com/issues/45".into(),
+                    relation: Some(LinkedIssueRelation::Closes),
+                },
+                LinkedIssue {
+                    url: "https://example.com/issues/46".into(),
+                    relation: None,
+                },
+            ])
+            .review_status(ReviewStatus::Approved)
+            .ci_status(CiStatus::Success)
+            .build()
+            .unwrap();
+        item.created = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        item.last_modified = Utc
+            .with_ymd_and_hms(2026, 6, 1, 12, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        item.updated = false;
+        item
+    }
+
+    /// Write a `TodoItem` to a VTODO component and read it back — verifies all fields round-trip.
+    #[test]
+    fn ical_round_trip() {
+        let item = make_item();
+
+        let component = item.vtodo();
+        let parsed = TodoItem::from_component(&component).expect("should parse valid VTODO");
+
+        assert_eq!(item.uid.0, parsed.uid.0, "uid");
+        assert_eq!(item.kind, parsed.kind, "kind");
+        assert_eq!(item.status, parsed.status, "status");
+        assert_eq!(item.url, parsed.url, "url");
+        assert_eq!(item.summary, parsed.summary, "summary");
+        assert_eq!(item.description, parsed.description, "description");
+        assert_eq!(item.labels, parsed.labels, "labels");
+        assert_eq!(item.milestone, parsed.milestone, "milestone");
+        assert_eq!(item.draft, parsed.draft, "draft");
+        assert_eq!(item.due, parsed.due, "due");
+        assert_eq!(item.start, parsed.start, "start");
+        assert_eq!(item.linked_issues, parsed.linked_issues, "linked_issues");
+        assert_eq!(item.review_status, parsed.review_status, "review_status");
+        assert_eq!(item.ci_status, parsed.ci_status, "ci_status");
+        assert_eq!(item.last_modified, parsed.last_modified, "last_modified");
+        // `created` is sourced from DTSTAMP, which vtodo() sets to Utc::now(), so it will differ.
+        // `updated` is set to false by from_component when LAST-MODIFIED is present.
+        assert!(!parsed.updated, "updated should be false after round-trip");
+    }
+
+    /// Round-trip a minimal item — only required fields set.
+    #[test]
+    fn ical_round_trip_minimal() {
+        let item = TodoItem::builder()
+            .kind(TodoKind::PullRequest)
+            .status(TodoStatus::NeedsAction)
+            .url("https://example.com/pr/1".into())
+            .summary("Minimal PR".into())
+            .build()
+            .unwrap();
+
+        let component = item.vtodo();
+        let parsed = TodoItem::from_component(&component).expect("should parse minimal VTODO");
+
+        assert_eq!(item.kind, parsed.kind);
+        assert_eq!(item.status, parsed.status);
+        assert_eq!(item.url, parsed.url);
+        assert_eq!(item.summary, parsed.summary);
+        assert_eq!(parsed.description, String::new());
+        assert!(parsed.labels.is_empty());
+        assert!(parsed.milestone.is_none());
+        assert!(!parsed.draft);
+        assert!(parsed.due.is_none());
+        assert!(parsed.start.is_none());
+        assert!(parsed.linked_issues.is_empty());
+        assert!(parsed.review_status.is_none());
+        assert!(parsed.ci_status.is_none());
+    }
+
+    /// Save an item to disk, read it back, modify it, and verify the update round-trips.
+    #[test]
+    fn merge_round_trip() {
+        let dir = tempfile::Builder::new()
+            .prefix("devtodo-test-merge")
+            .tempdir()
+            .unwrap();
+
+        let mut item = make_item();
+        item.updated = false;
+
+        let file = TodoFile::from_item(&dir, item).expect("should write");
+        let path = file.path.clone();
+        let reloaded = TodoFile::from_path(&path)
+            .expect("should read")
+            .expect("should be a devtodo file");
+        assert_eq!(
+            file.item.url, reloaded.item.url,
+            "url should survive round-trip",
+        );
+
+        // Modify via setters
+        let mut modified = reloaded.item;
+        modified.set_summary("Updated summary");
+        modified.set_status(TodoStatus::Completed);
+        modified.set_labels(vec!["fixed".into()]);
+
+        let file2 = TodoFile::from_item(&dir, modified).expect("should write updated item");
+        assert_eq!(path, file2.path, "file path should be the same");
+
+        let reloaded2 = TodoFile::from_path(&path)
+            .expect("should read")
+            .expect("should be a devtodo file");
+        assert_eq!(reloaded2.item.url, "https://example.com/issues/42");
+        // Verify modifications via private field access
+        assert_eq!(reloaded2.item.summary, "Updated summary");
+        assert_eq!(reloaded2.item.status, TodoStatus::Completed);
+        assert_eq!(reloaded2.item.labels, vec!["fixed".to_owned()]);
     }
 }
