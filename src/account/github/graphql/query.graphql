@@ -84,6 +84,12 @@ fragment PullRequestInfo on PullRequest {
     state
     title
     url
+    # Get linked/closing issues (up to 10)
+    closingIssuesReferences(first: 10) {
+        nodes {
+            url
+        }
+    }
     # We only care about the first 10 review requests.
     reviewRequests(first: 10) {
         reviewers: nodes {

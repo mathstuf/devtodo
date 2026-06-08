@@ -357,6 +357,57 @@ impl Default for Uid {
     }
 }
 
+/// The relationship direction for a linked issue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkedIssueRelation {
+    /// This item blocks the linked issue.
+    Blocks,
+    /// This item depends on (is blocked by) the linked issue.
+    DependsOn,
+    /// This item will close the linked issue when it is merged.
+    Closes,
+    /// This item will be closed when the linked issue is merged.
+    ClosedBy,
+    /// This item is referenced by another item.
+    Referenced,
+}
+
+impl LinkedIssueRelation {
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Return the relation type for an iCalendar parameter value.
+    fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "BLOCKS" => Some(Self::Blocks),
+            "DEPENDS-ON" => Some(Self::DependsOn),
+            "CLOSES" => Some(Self::Closes),
+            "CLOSED-BY" => Some(Self::ClosedBy),
+            "REFERENCES" => Some(Self::Referenced),
+            _ => None,
+        }
+    }
+}
+
+impl AsRef<str> for LinkedIssueRelation {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Blocks => "BLOCKS",
+            Self::DependsOn => "DEPENDS-ON",
+            Self::Closes => "CLOSES",
+            Self::ClosedBy => "CLOSED-BY",
+            Self::Referenced => "REFERENCED",
+        }
+    }
+}
+
+/// A linked issue with its relationship direction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedIssue {
+    /// URL of the linked issue.
+    pub url: String,
+    /// How this item relates to the linked issue.
+    pub relation: Option<LinkedIssueRelation>,
+}
+
 /// A single todo item derived from a code-hosting service item.
 #[derive(Builder)]
 pub struct TodoItem {
@@ -396,6 +447,9 @@ pub struct TodoItem {
     /// Whether the upstream pull request is in draft state.
     #[builder(default)]
     draft: bool,
+    /// Issues linked via RELATED-TO with an X-RELATION parameter.
+    #[builder(default)]
+    linked_issues: Vec<LinkedIssue>,
 
     /// Timestamp of the most recent modification (iCalendar LAST-MODIFIED).
     #[builder(default = "Utc::now()")]
@@ -508,6 +562,15 @@ impl TodoItem {
         }
     }
 
+    /// Replace the linked issues for this item.
+    pub fn set_linked_issues(&mut self, new_linked_issues: Vec<LinkedIssue>) {
+        if self.linked_issues != new_linked_issues {
+            self.linked_issues = new_linked_issues;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     /// Return the canonical URL of the upstream item.
     pub fn url(&self) -> &str {
         &self.url
@@ -575,6 +638,21 @@ impl TodoItem {
         let draft = component
             .get_only("X-DRAFT")
             .is_some_and(|is_draft| is_draft.value_as_string() == "TRUE");
+        let linked_issues = component
+            .get_all("RELATED-TO")
+            .iter()
+            .map(|prop| {
+                let issue_url = prop.value_as_string();
+                let relation = prop
+                    .params
+                    .get("X-RELATION")
+                    .and_then(|str| LinkedIssueRelation::from_str(str));
+                LinkedIssue {
+                    url: issue_url,
+                    relation,
+                }
+            })
+            .collect();
 
         Some(Self {
             uid,
@@ -589,6 +667,7 @@ impl TodoItem {
             labels,
             milestone,
             draft,
+            linked_issues,
             last_modified,
             updated,
         })
@@ -675,6 +754,21 @@ impl TodoItem {
             component.set(Property::new("X-DRAFT", "TRUE"));
         } else {
             component.remove("X-DRAFT");
+        }
+
+        // Write RELATED-TO properties for linked issues
+        // First remove all existing RELATED-TO properties
+        while component.get_only("RELATED-TO").is_some() {
+            component.remove("RELATED-TO");
+        }
+        // Then add new ones
+        for linked in &self.linked_issues {
+            let mut prop = Property::new("RELATED-TO", &linked.url);
+            if let Some(relation) = linked.relation {
+                prop.params
+                    .insert("X-RELATION".to_owned(), relation.as_ref().to_owned());
+            }
+            component.push(prop);
         }
     }
 }
