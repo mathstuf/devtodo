@@ -8,8 +8,8 @@
 
 use chrono::NaiveDate;
 use forgejo_api::structs::{
-    Issue, IssueSearchIssuesQuery, IssueSearchIssuesQueryState, IssueSearchIssuesQueryType,
-    StateType,
+    CommitStatusState, Issue, IssueSearchIssuesQuery, IssueSearchIssuesQueryState,
+    IssueSearchIssuesQueryType, ListActionRunsQuery, StateType,
 };
 use forgejo_api::sync::Forgejo;
 use forgejo_api::Auth;
@@ -17,7 +17,73 @@ use log::{error, warn};
 use url::Url;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
+use crate::todo::{
+    CiStatus, Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus,
+};
+
+/// A normalised view of a single action run's status for aggregation.
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+enum AggregatedRunStatus {
+    /// The run completed successfully.
+    Success,
+    /// The run failed.
+    Failure,
+    /// The run is still in-flight or waiting to start.
+    Pending,
+    /// The run was skipped (or cancelled), contributing nothing to the
+    /// aggregate.
+    Neutral,
+}
+
+impl AggregatedRunStatus {
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Combine two run statuses into the overall aggregate.
+    ///
+    /// Order:
+    ///   - `Failure` is sticky (wins over everything).
+    ///   - `Pending` is the next-stickiest.
+    ///   - `Neutral` is transparent (passes the other through).
+    ///   - `Success` + `Success` remains `Success`.
+    const fn combine(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Failure, _) | (_, Self::Failure) => Self::Failure,
+            (Self::Pending, _) | (_, Self::Pending) => Self::Pending,
+            (Self::Neutral, status) | (status, Self::Neutral) => status,
+            (Self::Success, Self::Success) => Self::Success,
+        }
+    }
+
+    #[expect(
+        clippy::allow_attributes,
+        reason = "call counts depend on feature selection"
+    )]
+    #[allow(clippy::single_call_fn, reason = "abstraction")]
+    /// Map a raw Forgejo Actions run to its normalised status.
+    fn from_run_status(run_status: &str) -> Self {
+        match run_status {
+            "success" => Self::Success,
+            "failure" => Self::Failure,
+            "cancelled" | "skipped" => Self::Neutral,
+            "waiting" | "running" | "blocked" | "unknown" => Self::Pending,
+            other => {
+                warn!("unrecognised Forgejo Actions run status: {other}");
+                Self::Pending
+            },
+        }
+    }
+}
+
+impl From<AggregatedRunStatus> for CiStatus {
+    fn from(value: AggregatedRunStatus) -> Self {
+        match value {
+            // A neutral status means all runs were skipped or cancelled. Consider this a success.
+            AggregatedRunStatus::Success | AggregatedRunStatus::Neutral => Self::Success,
+            AggregatedRunStatus::Failure => Self::Failure,
+            AggregatedRunStatus::Pending => Self::Pending,
+        }
+    }
+}
 
 /// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
@@ -43,6 +109,8 @@ struct ForgejoItem {
     linked_issues: Vec<LinkedIssue>,
     /// Review status if this is a merge request with reviews enabled.
     review_status: Option<ReviewStatus>,
+    /// CI/CD pipeline status for the upstream item.
+    ci_status: Option<CiStatus>,
 }
 
 impl ForgejoItem {
@@ -55,6 +123,10 @@ impl ForgejoItem {
         };
 
         let state = issue.state.unwrap_or(StateType::Open);
+        let url = issue
+            .html_url
+            .map(|url| url.to_string())
+            .unwrap_or_default();
         let has_assignees = issue
             .assignees
             .as_ref()
@@ -155,21 +227,43 @@ impl ForgejoItem {
             None
         };
 
+        let ci_status = if is_pull_request {
+            match issue
+                .number
+                .zip(
+                    issue
+                        .repository
+                        .as_ref()
+                        .and_then(|repo| repo.owner.as_ref().zip(repo.name.as_ref())),
+                )
+                .map(|(number, (owner, repo))| {
+                    ForgejoQuery::fetch_ci_for_pr(client, owner, repo, number)
+                })
+                .transpose()
+            {
+                Ok(ci_status) => ci_status.flatten(),
+                Err(err) => {
+                    warn!("failed to determine CI status for {url}: {err:?}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
+
         Self {
             due,
             summary: issue.title.unwrap_or_default(),
             description: issue.body.unwrap_or_default(),
             kind,
             status,
-            url: issue
-                .html_url
-                .map(|url| url.to_string())
-                .unwrap_or_default(),
+            url,
             labels,
             milestone,
             draft,
             linked_issues,
             review_status,
+            ci_status,
         }
     }
 }
@@ -486,6 +580,98 @@ impl ForgejoQuery {
             })
             .reduce(ReviewStatus::combine)
     }
+
+    /// Fetch CI status for a single pull request by looking up actions runs first,
+    /// then falling back to the combined commit status.
+    #[expect(clippy::single_call_fn, reason = "function size")]
+    fn fetch_ci_for_pr(
+        client: &Forgejo,
+        owner: &str,
+        repo: &str,
+        number: i64,
+    ) -> Result<Option<CiStatus>, ItemError> {
+        // Fetch full PR details to get the head commit SHA.
+        let pr = client
+            .repo_get_pull_request(owner, repo, number)
+            .send()
+            .map_err(|err| {
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to fetch PR {owner}/{repo}#{number} for CI status: {err:?}"),
+                )
+            })?;
+
+        let head_sha = pr
+            .head
+            .as_ref()
+            .ok_or_else(|| {
+                ItemError::query_error(
+                    "forgejo",
+                    format!("missing HEAD information for {owner}/{repo}#{number}"),
+                )
+            })?
+            .sha
+            .as_ref()
+            .ok_or_else(|| {
+                ItemError::query_error(
+                    "forgejo",
+                    format!("missing SHA information for {owner}/{repo}#{number}"),
+                )
+            })?;
+
+        // Try Forgejo Actions runs first.
+        let query = ListActionRunsQuery {
+            head_sha: Some(head_sha.clone()),
+            ..Default::default()
+        };
+
+        let runs_response = client
+            .list_action_runs(owner, repo, query)
+            .send()
+            .map_err(|err| {
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to list action runs for {owner}/{repo}#{number}: {err:?}"),
+                )
+            })?;
+
+        let runs = runs_response.workflow_runs.unwrap_or_default();
+
+        if !runs.is_empty() {
+            return Ok(Some(
+                runs.iter()
+                    .filter_map(|run| run.status.as_deref())
+                    .map(AggregatedRunStatus::from_run_status)
+                    .fold(AggregatedRunStatus::Neutral, AggregatedRunStatus::combine)
+                    .into(),
+            ));
+        }
+
+        // Fall back to the combined commit status (e.g. for legacy CI or
+        // webhook-based status).
+        let (_, combined_status) = client
+            .repo_get_combined_status_by_ref(owner, repo, head_sha)
+            .send()
+            .map_err(|err| {
+                ItemError::query_error(
+                    "forgejo",
+                    format!("failed to get combined status for {owner}/{repo}@{head_sha}: {err:?}"),
+                )
+            })?;
+
+        Ok(combined_status.state.map(Self::commit_status_to_ci))
+    }
+
+    /// Map a Forgejo [`CommitStatusState`] to our canonical [`CiStatus`].
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    const fn commit_status_to_ci(state: CommitStatusState) -> CiStatus {
+        match state {
+            CommitStatusState::Success => CiStatus::Success,
+            CommitStatusState::Failure => CiStatus::Failure,
+            CommitStatusState::Error | CommitStatusState::Warning => CiStatus::Error,
+            CommitStatusState::Pending => CiStatus::Pending,
+        }
+    }
 }
 
 impl ItemSource for ForgejoQuery {
@@ -523,6 +709,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
                     item.set_review_status(result.review_status);
+                    item.set_ci_status(result.ci_status);
 
                     None
                 } else {
@@ -547,10 +734,113 @@ impl ItemSource for ForgejoQuery {
                     if let Some(review_status) = result.review_status {
                         item.review_status(review_status);
                     }
+                    if let Some(ci_status) = result.ci_status {
+                        item.ci_status(ci_status);
+                    }
 
                     Some(item.build().expect("all item fields should be provided"))
                 }
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::account::forgejo::AggregatedRunStatus;
+    use crate::todo::CiStatus;
+
+    #[test]
+    fn test_aggregated_run_status_combine() {
+        let cases = [
+            (
+                AggregatedRunStatus::Success,
+                AggregatedRunStatus::Success,
+                AggregatedRunStatus::Success,
+            ),
+            (
+                AggregatedRunStatus::Success,
+                AggregatedRunStatus::Failure,
+                AggregatedRunStatus::Failure,
+            ),
+            (
+                AggregatedRunStatus::Success,
+                AggregatedRunStatus::Pending,
+                AggregatedRunStatus::Pending,
+            ),
+            (
+                AggregatedRunStatus::Success,
+                AggregatedRunStatus::Neutral,
+                AggregatedRunStatus::Success,
+            ),
+            (
+                AggregatedRunStatus::Failure,
+                AggregatedRunStatus::Failure,
+                AggregatedRunStatus::Failure,
+            ),
+            (
+                AggregatedRunStatus::Failure,
+                AggregatedRunStatus::Pending,
+                AggregatedRunStatus::Failure,
+            ),
+            (
+                AggregatedRunStatus::Failure,
+                AggregatedRunStatus::Neutral,
+                AggregatedRunStatus::Failure,
+            ),
+            (
+                AggregatedRunStatus::Pending,
+                AggregatedRunStatus::Pending,
+                AggregatedRunStatus::Pending,
+            ),
+            (
+                AggregatedRunStatus::Pending,
+                AggregatedRunStatus::Neutral,
+                AggregatedRunStatus::Pending,
+            ),
+            (
+                AggregatedRunStatus::Neutral,
+                AggregatedRunStatus::Neutral,
+                AggregatedRunStatus::Neutral,
+            ),
+        ];
+
+        for (left, right, result) in cases {
+            assert_eq!(left.combine(right), result);
+            assert_eq!(right.combine(left), result);
+        }
+    }
+
+    #[test]
+    fn test_aggregated_run_status_from_run_status() {
+        let cases = [
+            ("success", AggregatedRunStatus::Success),
+            ("failure", AggregatedRunStatus::Failure),
+            ("cancelled", AggregatedRunStatus::Neutral),
+            ("skipped", AggregatedRunStatus::Neutral),
+            ("waiting", AggregatedRunStatus::Pending),
+            ("running", AggregatedRunStatus::Pending),
+            ("blocked", AggregatedRunStatus::Pending),
+            ("unknown", AggregatedRunStatus::Pending),
+            ("not a forgejo status", AggregatedRunStatus::Pending),
+        ];
+
+        for (run_status, expect) in cases {
+            assert_eq!(AggregatedRunStatus::from_run_status(run_status), expect);
+        }
+    }
+
+    #[test]
+    fn test_from_aggregated_run_status_for_ci_status() {
+        let cases = [
+            (AggregatedRunStatus::Success, CiStatus::Success),
+            (AggregatedRunStatus::Failure, CiStatus::Failure),
+            (AggregatedRunStatus::Pending, CiStatus::Pending),
+            (AggregatedRunStatus::Neutral, CiStatus::Success),
+        ];
+
+        for (run_status, ci_status) in cases {
+            assert_eq!(CiStatus::from(run_status), ci_status);
+        }
     }
 }

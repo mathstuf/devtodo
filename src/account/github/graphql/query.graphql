@@ -83,6 +83,10 @@ fragment PullRequestInfo on PullRequest {
     }
     reviewDecision
     state
+    # CI/CD status
+    statusCheckRollup {
+        state
+    }
     title
     url
     # Get linked/closing issues (up to 10)

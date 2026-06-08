@@ -347,6 +347,44 @@ impl AsRef<str> for ReviewStatus {
     }
 }
 
+/// CI/CD pipeline status for pull requests/merge requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CiStatus {
+    /// CI is pending/running.
+    Pending,
+    /// CI completed successfully.
+    Success,
+    /// CI failed.
+    Failure,
+    /// CI encountered an error.
+    Error,
+}
+
+impl CiStatus {
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Parse a `CiStatus` from its serialized string representation.
+    fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "PENDING" => Some(Self::Pending),
+            "SUCCESS" => Some(Self::Success),
+            "FAILURE" => Some(Self::Failure),
+            "ERROR" => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+
+impl AsRef<str> for CiStatus {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::Success => "SUCCESS",
+            Self::Failure => "FAILURE",
+            Self::Error => "ERROR",
+        }
+    }
+}
+
 /// Format string for iCalendar date-time values (UTC, no fractional seconds).
 pub const DATE_TIME_FMT: &str = "%Y%m%dT%H%M%SZ";
 /// Format string for iCalendar date-only values.
@@ -507,6 +545,10 @@ pub struct TodoItem {
     #[builder(default)]
     #[builder(setter(strip_option))]
     review_status: Option<ReviewStatus>,
+    /// CI/CD pipeline status for the upstream item.
+    #[builder(default)]
+    #[builder(setter(strip_option))]
+    ci_status: Option<CiStatus>,
 
     /// Timestamp of the most recent modification (iCalendar LAST-MODIFIED).
     #[builder(default = "Utc::now()")]
@@ -637,6 +679,15 @@ impl TodoItem {
         }
     }
 
+    /// Replace the CI/CD pipeline status for this item.
+    pub fn set_ci_status(&mut self, new_ci_status: Option<CiStatus>) {
+        if self.ci_status != new_ci_status {
+            self.ci_status = new_ci_status;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     /// Return the canonical URL of the upstream item.
     pub fn url(&self) -> &str {
         &self.url
@@ -722,6 +773,9 @@ impl TodoItem {
         let review_status = component
             .get_only("X-REVIEW-STATUS")
             .and_then(|review_status| ReviewStatus::from_str(&review_status.value_as_string()));
+        let ci_status = component
+            .get_only("X-CI-STATUS")
+            .and_then(|ci_status| CiStatus::from_str(&ci_status.value_as_string()));
 
         Some(Self {
             uid,
@@ -738,6 +792,7 @@ impl TodoItem {
             draft,
             linked_issues,
             review_status,
+            ci_status,
             last_modified,
             updated,
         })
@@ -846,6 +901,13 @@ impl TodoItem {
             component.set(Property::new("X-REVIEW-STATUS", review_status.as_ref()));
         } else {
             component.remove("X-REVIEW-STATUS");
+        }
+
+        // Write X-CI-STATUS property
+        if let Some(ci_status) = self.ci_status {
+            component.set(Property::new("X-CI-STATUS", ci_status.as_ref()));
+        } else {
+            component.remove("X-CI-STATUS");
         }
     }
 }

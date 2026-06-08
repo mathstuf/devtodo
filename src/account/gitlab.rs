@@ -13,7 +13,9 @@ use log::{error, warn};
 use serde::Deserialize;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
+use crate::todo::{
+    CiStatus, Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus,
+};
 
 /// Placeholder for a GitLab user in deserialized API responses.
 #[derive(Debug, Deserialize)]
@@ -55,6 +57,13 @@ struct GitlabIssue {
     iid: u64,
 }
 
+/// A GitLab pipeline as returned by the REST API.
+#[derive(Debug, Deserialize)]
+struct GitlabPipeline {
+    /// The status of the pipeline.
+    status: String,
+}
+
 /// A GitLab merge request as returned by the REST API.
 #[derive(Debug, Deserialize)]
 struct GitlabMergeRequest {
@@ -79,6 +88,8 @@ struct GitlabMergeRequest {
     project_id: u64,
     /// The project-level IID of the merge request.
     iid: u64,
+    /// The last pipeline for the merge request.
+    head_pipeline: Option<GitlabPipeline>,
 }
 
 /// A reviewer on a merge request with their review state.
@@ -207,6 +218,8 @@ struct GitlabItem {
     linked_issues: Vec<LinkedIssue>,
     /// The review status of the item.
     review_status: Option<ReviewStatus>,
+    /// The CI status of the item.
+    ci_status: Option<CiStatus>,
 }
 
 impl GitlabItem {
@@ -253,6 +266,7 @@ impl GitlabItem {
             draft: false,
             linked_issues,
             review_status: None,
+            ci_status: None,
         }
     }
 
@@ -290,6 +304,19 @@ impl GitlabItem {
 
         let review_status = Self::fetch_review_status(client, &mr);
 
+        let ci_status = mr.head_pipeline.map(|pipeline| {
+            match pipeline.status.as_str() {
+                "success" => CiStatus::Success,
+                "failed" => CiStatus::Failure,
+                "canceled" => CiStatus::Error,
+                "running" | "pending" | "created" => CiStatus::Pending,
+                pipe_status => {
+                    warn!("unknown gitlab pipeline status: {pipe_status}");
+                    CiStatus::Pending
+                },
+            }
+        });
+
         Self {
             start: None,
             due,
@@ -303,6 +330,7 @@ impl GitlabItem {
             draft,
             linked_issues,
             review_status,
+            ci_status,
         }
     }
 
@@ -819,6 +847,7 @@ impl ItemSource for GitlabQuery {
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
                     item.set_review_status(result.review_status);
+                    item.set_ci_status(result.ci_status);
 
                     None
                 } else {
@@ -845,6 +874,9 @@ impl ItemSource for GitlabQuery {
                     }
                     if let Some(review_status) = result.review_status {
                         item.review_status(review_status);
+                    }
+                    if let Some(ci_status) = result.ci_status {
+                        item.ci_status(ci_status);
                     }
 
                     Some(item.build().expect("all item fields should be provided"))
