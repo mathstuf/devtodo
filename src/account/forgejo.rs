@@ -85,6 +85,41 @@ impl From<AggregatedRunStatus> for CiStatus {
     }
 }
 
+#[expect(clippy::single_call_fn, reason = "abstraction")]
+fn forgejo_issue_status(issue: &Issue, is_pull_request: bool) -> TodoStatus {
+    match issue.state.unwrap_or(StateType::Open) {
+        StateType::Closed => {
+            if is_pull_request {
+                // For PRs, check if it was merged
+                // The `pull_request` field contains merge info if it's a PR
+                if issue
+                    .pull_request
+                    .as_ref()
+                    .and_then(|pr| pr.merged)
+                    .unwrap_or(false)
+                {
+                    TodoStatus::Completed
+                } else {
+                    TodoStatus::Cancelled
+                }
+            } else {
+                TodoStatus::Completed
+            }
+        },
+        StateType::Open => {
+            let has_assignees = issue
+                .assignees
+                .as_ref()
+                .is_some_and(|assignees| !assignees.is_empty());
+            if has_assignees {
+                TodoStatus::InProcess
+            } else {
+                TodoStatus::NeedsAction
+            }
+        },
+    }
+}
+
 /// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
     /// Optional due date.
@@ -122,43 +157,12 @@ impl ForgejoItem {
             TodoKind::Issue
         };
 
-        let state = issue.state.unwrap_or(StateType::Open);
         let url = issue
             .html_url
-            .map(|url| url.to_string())
-            .unwrap_or_default();
-        let has_assignees = issue
-            .assignees
             .as_ref()
-            .is_some_and(|assignees| !assignees.is_empty());
-
-        let status = match state {
-            StateType::Closed => {
-                if is_pull_request {
-                    // For PRs, check if it was merged
-                    // The `pull_request` field contains merge info if it's a PR
-                    if issue
-                        .pull_request
-                        .as_ref()
-                        .and_then(|pr| pr.merged)
-                        .unwrap_or(false)
-                    {
-                        TodoStatus::Completed
-                    } else {
-                        TodoStatus::Cancelled
-                    }
-                } else {
-                    TodoStatus::Completed
-                }
-            },
-            StateType::Open => {
-                if has_assignees {
-                    TodoStatus::InProcess
-                } else {
-                    TodoStatus::NeedsAction
-                }
-            },
-        };
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        let status = forgejo_issue_status(&issue, is_pull_request);
 
         // Extract due date from milestone if present
         // Convert from time::OffsetDateTime to chrono::NaiveDate
