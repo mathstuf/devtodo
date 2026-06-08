@@ -573,6 +573,7 @@ impl TodoItem {
     }
 
     #[cfg(feature = "gitlab")]
+    /// Set the start date of the item.
     pub fn set_start(&mut self, new_start: Due) {
         if self.start.as_ref().is_none_or(|&start| start != new_start) {
             self.start = Some(new_start);
