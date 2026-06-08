@@ -13,7 +13,7 @@ use log::{error, warn};
 use serde::Deserialize;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
 
 /// Placeholder for a GitLab user in deserialized API responses.
 #[derive(Debug, Deserialize)]
@@ -81,6 +81,13 @@ struct GitlabMergeRequest {
     iid: u64,
 }
 
+/// A reviewer on a merge request with their review state.
+#[derive(Debug, Deserialize)]
+struct GitlabReviewer {
+    /// The review state: `unreviewed`, `reviewed`, `approved`, or `changes_requested`.
+    state: String,
+}
+
 /// Minimal merge request returned from linked-item endpoints.
 #[derive(Debug, Deserialize)]
 struct GitlabLinkedMr {
@@ -144,6 +151,36 @@ impl GitlabIssueLink {
     }
 }
 
+/// Approval state for a merge request from the approvals API.
+#[derive(Debug, Deserialize)]
+struct GitlabMergeRequestApprovals {
+    /// Total approvals required before merging.
+    #[serde(default)]
+    approvals_required: u64,
+    /// Approvals still needed before merging.
+    #[serde(default)]
+    approvals_left: u64,
+    /// Users who have approved this merge request.
+    #[serde(default)]
+    approved_by: Vec<GitlabApprovalUser>,
+}
+
+/// A user entry in the `approved_by` list.
+#[derive(Debug, Deserialize)]
+struct GitlabApprovalUser {
+    /// The user who approved.
+    #[expect(dead_code, reason = "deserialization only")]
+    user: GitlabUserInfo,
+}
+
+/// Minimal user info from GitLab API responses.
+#[derive(Debug, Deserialize)]
+struct GitlabUserInfo {
+    /// The user's ID.
+    #[expect(dead_code, reason = "deserialization only")]
+    id: u64,
+}
+
 /// A single item retrieved from the GitLab API, prior to conversion into a [`TodoItem`].
 struct GitlabItem {
     /// Optional start date.
@@ -168,6 +205,8 @@ struct GitlabItem {
     draft: bool,
     /// Linked issues to the item.
     linked_issues: Vec<LinkedIssue>,
+    /// The review status of the item.
+    review_status: Option<ReviewStatus>,
 }
 
 impl GitlabItem {
@@ -213,6 +252,7 @@ impl GitlabItem {
             milestone,
             draft: false,
             linked_issues,
+            review_status: None,
         }
     }
 
@@ -248,6 +288,8 @@ impl GitlabItem {
 
         let linked_issues = Self::fetch_mr_linked(client, &mr);
 
+        let review_status = Self::fetch_review_status(client, &mr);
+
         Self {
             start: None,
             due,
@@ -260,7 +302,99 @@ impl GitlabItem {
             milestone,
             draft,
             linked_issues,
+            review_status,
         }
+    }
+
+    /// Fetch the review status for a merge request.
+    ///
+    /// When approval rules are configured, uses the approvals API directly.
+    /// When no rules are in place, combines signals from all reviewers.
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    fn fetch_review_status(client: &Gitlab, mr: &GitlabMergeRequest) -> Option<ReviewStatus> {
+        let approvals: GitlabMergeRequestApprovals =
+            match projects::merge_requests::approvals::MergeRequestApprovals::builder()
+                .project(mr.project_id)
+                .merge_request(mr.iid)
+                .build()
+                .expect("all fields provided")
+                .query(client)
+            {
+                Ok(approvals) => approvals,
+                Err(err) => {
+                    warn!(
+                        "failed to fetch approval status for MR {}!{}: {err:?}",
+                        mr.project_id, mr.iid,
+                    );
+                    // Make a dummy approval configuration to just look at the current reviewer
+                    // state instead.
+                    GitlabMergeRequestApprovals {
+                        approvals_required: 0,
+                        approvals_left: 0,
+                        approved_by: Vec::new(),
+                    }
+                },
+            };
+
+        if approvals.approvals_required > 0 {
+            // Formal approval rules are configured.
+            if approvals.approvals_left == 0 {
+                return Some(ReviewStatus::Approved);
+            }
+            return Some(ReviewStatus::ReviewRequired);
+        }
+
+        // No approval rules — combine signals from all reviewers.
+        let reviewers: Vec<GitlabReviewer> = match api::paged(
+            projects::merge_requests::MergeRequestReviewers::builder()
+                .project(mr.project_id)
+                .merge_request(mr.iid)
+                .build()
+                .expect("all fields provided"),
+            api::Pagination::All,
+        )
+        .query(client)
+        {
+            Ok(reviewers) => reviewers,
+            Err(err) => {
+                warn!(
+                    "failed to fetch reviewers for MR {}!{}: {err:?}",
+                    mr.project_id, mr.iid,
+                );
+                return None;
+            },
+        };
+
+        let review_status = reviewers
+            .iter()
+            .filter_map(|reviewer| {
+                match reviewer.state.as_str() {
+                    "changes_requested" => Some(ReviewStatus::ChangesRequested),
+                    "approved" => Some(ReviewStatus::Approved),
+                    "reviewed" | "unreviewed" => Some(ReviewStatus::Pending),
+                    other => {
+                        warn!("unknown gitlab review state: {other}");
+                        None
+                    },
+                }
+            })
+            .reduce(ReviewStatus::combine);
+
+        if review_status.is_some() {
+            return review_status;
+        }
+
+        // Fall back to approvals-based signals if no reviewer state was conclusive.
+        if !approvals.approved_by.is_empty() {
+            return Some(ReviewStatus::Approved);
+        }
+
+        // Reviewers exist but none have taken a conclusive action.
+        if !reviewers.is_empty() {
+            return Some(ReviewStatus::Pending);
+        }
+
+        None
     }
 
     #[expect(clippy::single_call_fn, reason = "abstraction")]
@@ -684,6 +818,7 @@ impl ItemSource for GitlabQuery {
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
+                    item.set_review_status(result.review_status);
 
                     None
                 } else {
@@ -707,6 +842,9 @@ impl ItemSource for GitlabQuery {
                     }
                     if let Some(milestone) = result.milestone {
                         item.milestone(milestone);
+                    }
+                    if let Some(review_status) = result.review_status {
+                        item.review_status(review_status);
                     }
 
                     Some(item.build().expect("all item fields should be provided"))

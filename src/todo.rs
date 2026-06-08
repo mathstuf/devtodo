@@ -294,6 +294,59 @@ impl AsRef<str> for TodoKind {
     }
 }
 
+/// Review status for pull requests/merge requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewStatus {
+    /// Review has not been requested or no reviews yet.
+    Pending,
+    /// Changes have been requested by a reviewer.
+    ChangesRequested,
+    /// The PR has been approved.
+    Approved,
+    /// A review is required before merging.
+    ReviewRequired,
+}
+
+impl ReviewStatus {
+    #[expect(
+        clippy::allow_attributes,
+        reason = "call counts depend on feature selection"
+    )]
+    #[allow(clippy::single_call_fn, reason = "abstraction")]
+    /// Combine two review statuses, keeping the higher-precedence one.
+    pub const fn combine(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::ChangesRequested, _) | (_, Self::ChangesRequested) => Self::ChangesRequested,
+            (Self::ReviewRequired, _) | (_, Self::ReviewRequired) => Self::ReviewRequired,
+            (Self::Approved, _) | (_, Self::Approved) => Self::Approved,
+            _ => Self::Pending,
+        }
+    }
+
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    /// Parse a `ReviewStatus` from its serialized string representation.
+    fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "PENDING" => Some(Self::Pending),
+            "CHANGES_REQUESTED" => Some(Self::ChangesRequested),
+            "APPROVED" => Some(Self::Approved),
+            "REVIEW_REQUIRED" => Some(Self::ReviewRequired),
+            _ => None,
+        }
+    }
+}
+
+impl AsRef<str> for ReviewStatus {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::ChangesRequested => "CHANGES_REQUESTED",
+            Self::Approved => "APPROVED",
+            Self::ReviewRequired => "REVIEW_REQUIRED",
+        }
+    }
+}
+
 /// Format string for iCalendar date-time values (UTC, no fractional seconds).
 pub const DATE_TIME_FMT: &str = "%Y%m%dT%H%M%SZ";
 /// Format string for iCalendar date-only values.
@@ -450,6 +503,10 @@ pub struct TodoItem {
     /// Issues linked via RELATED-TO with an X-RELATION parameter.
     #[builder(default)]
     linked_issues: Vec<LinkedIssue>,
+    /// Review status if this is a merge request with reviews enabled.
+    #[builder(default)]
+    #[builder(setter(strip_option))]
+    review_status: Option<ReviewStatus>,
 
     /// Timestamp of the most recent modification (iCalendar LAST-MODIFIED).
     #[builder(default = "Utc::now()")]
@@ -571,6 +628,15 @@ impl TodoItem {
         }
     }
 
+    /// Replace the review status for this item.
+    pub fn set_review_status(&mut self, new_review_status: Option<ReviewStatus>) {
+        if self.review_status != new_review_status {
+            self.review_status = new_review_status;
+            self.last_modified = Utc::now();
+            self.updated = true;
+        }
+    }
+
     /// Return the canonical URL of the upstream item.
     pub fn url(&self) -> &str {
         &self.url
@@ -653,6 +719,9 @@ impl TodoItem {
                 }
             })
             .collect();
+        let review_status = component
+            .get_only("X-REVIEW-STATUS")
+            .and_then(|review_status| ReviewStatus::from_str(&review_status.value_as_string()));
 
         Some(Self {
             uid,
@@ -668,6 +737,7 @@ impl TodoItem {
             milestone,
             draft,
             linked_issues,
+            review_status,
             last_modified,
             updated,
         })
@@ -769,6 +839,78 @@ impl TodoItem {
                     .insert("X-RELATION".to_owned(), relation.as_ref().to_owned());
             }
             component.push(prop);
+        }
+
+        // Write X-REVIEW-STATUS property
+        if let Some(review_status) = self.review_status {
+            component.set(Property::new("X-REVIEW-STATUS", review_status.as_ref()));
+        } else {
+            component.remove("X-REVIEW-STATUS");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_review_status_combine() {
+        let cases = [
+            (
+                ReviewStatus::Pending,
+                ReviewStatus::Pending,
+                ReviewStatus::Pending,
+            ),
+            (
+                ReviewStatus::Pending,
+                ReviewStatus::Approved,
+                ReviewStatus::Approved,
+            ),
+            (
+                ReviewStatus::Pending,
+                ReviewStatus::ChangesRequested,
+                ReviewStatus::ChangesRequested,
+            ),
+            (
+                ReviewStatus::Pending,
+                ReviewStatus::ReviewRequired,
+                ReviewStatus::ReviewRequired,
+            ),
+            (
+                ReviewStatus::ChangesRequested,
+                ReviewStatus::Approved,
+                ReviewStatus::ChangesRequested,
+            ),
+            (
+                ReviewStatus::ChangesRequested,
+                ReviewStatus::ChangesRequested,
+                ReviewStatus::ChangesRequested,
+            ),
+            (
+                ReviewStatus::ChangesRequested,
+                ReviewStatus::ReviewRequired,
+                ReviewStatus::ChangesRequested,
+            ),
+            (
+                ReviewStatus::Approved,
+                ReviewStatus::Approved,
+                ReviewStatus::Approved,
+            ),
+            (
+                ReviewStatus::Approved,
+                ReviewStatus::ReviewRequired,
+                ReviewStatus::ReviewRequired,
+            ),
+            (
+                ReviewStatus::ReviewRequired,
+                ReviewStatus::ReviewRequired,
+                ReviewStatus::ReviewRequired,
+            ),
+        ];
+        for (lhs, rhs, expected) in cases {
+            assert_eq!(lhs.combine(rhs), expected);
+            assert_eq!(rhs.combine(lhs), expected);
         }
     }
 }

@@ -17,7 +17,7 @@ use log::{error, warn};
 use url::Url;
 
 use crate::account::prelude::*;
-use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, TodoKind, TodoStatus};
+use crate::todo::{Due, LinkedIssue, LinkedIssueRelation, ReviewStatus, TodoKind, TodoStatus};
 
 /// A single item retrieved from the Forgejo API, prior to conversion into a [`TodoItem`].
 struct ForgejoItem {
@@ -41,6 +41,8 @@ struct ForgejoItem {
     draft: bool,
     /// Issues linked via RELATED-TO with an X-RELATION parameter.
     linked_issues: Vec<LinkedIssue>,
+    /// Review status if this is a merge request with reviews enabled.
+    review_status: Option<ReviewStatus>,
 }
 
 impl ForgejoItem {
@@ -137,6 +139,22 @@ impl ForgejoItem {
             })
             .unwrap_or_default();
 
+        let review_status = if is_pull_request {
+            issue
+                .number
+                .zip(
+                    issue
+                        .repository
+                        .as_ref()
+                        .and_then(|repo| repo.owner.as_ref().zip(repo.name.as_ref())),
+                )
+                .and_then(|(number, (owner, repo))| {
+                    ForgejoQuery::fetch_review_status(client, owner, repo, number)
+                })
+        } else {
+            None
+        };
+
         Self {
             due,
             summary: issue.title.unwrap_or_default(),
@@ -151,6 +169,7 @@ impl ForgejoItem {
             milestone,
             draft,
             linked_issues,
+            review_status,
         }
     }
 }
@@ -435,6 +454,38 @@ impl ForgejoQuery {
 
         links
     }
+
+    /// Fetch review status for a single pull request.
+    #[expect(clippy::single_call_fn, reason = "abstraction")]
+    fn fetch_review_status(
+        client: &Forgejo,
+        owner: &str,
+        repo: &str,
+        number: i64,
+    ) -> Option<ReviewStatus> {
+        let (_, reviews) = match client.repo_list_pull_reviews(owner, repo, number).send() {
+            Ok(reviews) => reviews,
+            Err(err) => {
+                warn!("failed to fetch reviews for {owner}/{repo}#{number}: {err:?}");
+                return None;
+            },
+        };
+
+        reviews
+            .iter()
+            .filter_map(|review| {
+                match review.state.as_deref()? {
+                    "APPROVED" => Some(ReviewStatus::Approved),
+                    "REQUEST_CHANGES" => Some(ReviewStatus::ChangesRequested),
+                    "PENDING" => Some(ReviewStatus::Pending),
+                    other => {
+                        warn!("unrecognised Forgejo review state: {other}");
+                        None
+                    },
+                }
+            })
+            .reduce(ReviewStatus::combine)
+    }
 }
 
 impl ItemSource for ForgejoQuery {
@@ -471,6 +522,7 @@ impl ItemSource for ForgejoQuery {
                     item.set_milestone(result.milestone);
                     item.set_draft(result.draft);
                     item.set_linked_issues(result.linked_issues);
+                    item.set_review_status(result.review_status);
 
                     None
                 } else {
@@ -491,6 +543,9 @@ impl ItemSource for ForgejoQuery {
                     }
                     if let Some(milestone) = result.milestone {
                         item.milestone(milestone);
+                    }
+                    if let Some(review_status) = result.review_status {
+                        item.review_status(review_status);
                     }
 
                     Some(item.build().expect("all item fields should be provided"))
