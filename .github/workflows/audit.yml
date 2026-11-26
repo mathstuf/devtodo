@@ -21,4 +21,5 @@ jobs:
             "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-gnu-v0.22.2.tgz"
           echo "ab28a1bdb54db4d5d8ad5981cf1f959410370b3d28250dbd35f6a44248620e39  /tmp/cargo-audit.tgz" | sha256sum --check
           tar -xzf /tmp/cargo-audit.tgz -C /usr/local/bin --strip-components=1 --wildcards '*/cargo-audit'
-      - run: cargo audit
+          # RUSTSEC-2026-0543: `chrono` is unmaintained: used by dependencies anyways.
+      - run: cargo audit --ignore RUSTSEC-2026-0543
